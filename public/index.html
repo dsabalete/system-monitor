@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>System Monitor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      text-align: center;
+      color: #4CAF50;
+    }
+    .card {
+      background: #222;
+      font-size: 1.2em;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border-left: 4px solid #4CAF50;
+    }
+    .card h3 {
+      margin: 0 0 10px 0;
+      color: #4CAF50;
+      font-size: 1.1em;
+    }
+    .card-content {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    .metric {
+      flex: 1;
+      min-width: 200px;
+    }
+    .metric-label {
+      color: #aaa;
+      font-size: 0.9em;
+    }
+    .metric-value {
+      color: #fff;
+      font-size: 1.1em;
+      font-weight: bold;
+    }
+    .network-interface {
+      background: #1a1a1a;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 4px;
+    }
+    .ip-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .ip-item {
+      background: #1a1a1a;
+      padding: 8px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .throttling-normal {
+      color: #4CAF50;
+    }
+    .throttling-warning {
+      color: #ff9800;
+    }
+    .throttling-error {
+      color: #f44336;
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 Raspberry Pi Monitor</h1>
+
+  <div class="card">
+    <h3>⏱️ Uptime</h3>
+    <div class="metric-value" id="uptime"></div>
+  </div>
+
+  <div class="card">
+    <h3>🧠 CPU Load Average</h3>
+    <div class="card-content">
+      <div class="metric">
+        <div class="metric-label">1 minute:</div>
+        <div class="metric-value" id="load1min"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">5 minutes:</div>
+        <div class="metric-value" id="load5min"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">15 minutes:</div>
+        <div class="metric-value" id="load15min"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🧮 RAM</h3>
+    <div class="metric-value" id="ram"></div>
+  </div>
+
+  <div class="card">
+    <h3>🌡️ Temperature</h3>
+    <div class="card-content">
+      <div class="metric">
+        <div class="metric-label">CPU:</div>
+        <div class="metric-value" id="temp-cpu"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">GPU:</div>
+        <div class="metric-value" id="temp-gpu"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>💾 Disk</h3>
+    <div class="metric-value" id="disk"></div>
+  </div>
+
+  <div class="card">
+    <h3>🌐 Network Usage</h3>
+    <div id="network"></div>
+  </div>
+
+  <div class="card">
+    <h3>📍 IP Addresses</h3>
+    <div class="card-content">
+      <div class="metric">
+        <div class="metric-label">Public IP:</div>
+        <div class="metric-value" id="public-ip"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Local IPv4:</div>
+        <div class="ip-list" id="local-ipv4"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Local IPv6:</div>
+        <div class="ip-list" id="local-ipv6"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>⚡ Throttling Status</h3>
+    <div class="metric-value" id="throttling"></div>
+  </div>
+
+  <script>
+    async function loadStats() {
+      try {
+        const res = await fetch("/api/stats");
+        const data = await res.json();
+
+        // Uptime
+        document.getElementById("uptime").textContent = data.uptime.formatted;
+
+        // CPU Load Average
+        document.getElementById("load1min").textContent = data.cpu.load1min;
+        document.getElementById("load5min").textContent = data.cpu.load5min;
+        document.getElementById("load15min").textContent = data.cpu.load15min;
+
+        // RAM
+        document.getElementById("ram").textContent =
+          `${data.memory.used} / ${data.memory.total} MB`;
+
+        // Temperature
+        document.getElementById("temp-cpu").textContent = data.temperature.cpu;
+        document.getElementById("temp-gpu").textContent = data.temperature.gpu;
+
+        // Disk
+        document.getElementById("disk").textContent =
+          `${data.disk.used} / ${data.disk.size}`;
+
+        // Network Usage
+        const networkDiv = document.getElementById("network");
+        const bandwidth = data.network.bandwidth || {};
+        if (Object.keys(bandwidth).length === 0) {
+          networkDiv.innerHTML = '<div class="metric-value">Collecting data...</div>';
+        } else {
+          let networkHTML = "";
+          for (const [interface, stats] of Object.entries(bandwidth)) {
+            networkHTML += `
+              <div class="network-interface">
+                <strong>${interface}:</strong><br>
+                <span class="metric-label">↓ Download:</span> ${stats.rx}<br>
+                <span class="metric-label">↑ Upload:</span> ${stats.tx}
+              </div>
+            `;
+          }
+          networkDiv.innerHTML = networkHTML || '<div class="metric-value">No active interfaces</div>';
+        }
+
+        // IP Addresses
+        document.getElementById("public-ip").textContent = data.ipAddresses.public;
+        
+        const ipv4Div = document.getElementById("local-ipv4");
+        if (data.ipAddresses.local.ipv4.length === 0) {
+          ipv4Div.innerHTML = '<div class="ip-item">None</div>';
+        } else {
+          ipv4Div.innerHTML = data.ipAddresses.local.ipv4
+            .map(ip => `<div class="ip-item">${ip.interface}: ${ip.address}</div>`)
+            .join("");
+        }
+        
+        const ipv6Div = document.getElementById("local-ipv6");
+        if (data.ipAddresses.local.ipv6.length === 0) {
+          ipv6Div.innerHTML = '<div class="ip-item">None</div>';
+        } else {
+          ipv6Div.innerHTML = data.ipAddresses.local.ipv6
+            .map(ip => `<div class="ip-item">${ip.interface}: ${ip.address}</div>`)
+            .join("");
+        }
+
+        // Throttling Status
+        const throttlingDiv = document.getElementById("throttling");
+        const throttlingStatus = data.throttling.status;
+        let throttlingClass = "throttling-normal";
+        if (throttlingStatus !== "Normal") {
+          throttlingClass = throttlingStatus.includes("Throttled") || throttlingStatus.includes("Undervoltage") 
+            ? "throttling-error" 
+            : "throttling-warning";
+        }
+        throttlingDiv.className = `metric-value ${throttlingClass}`;
+        throttlingDiv.textContent = throttlingStatus;
+      } catch (error) {
+        console.error("Error loading stats:", error);
+      }
+    }
+
+    loadStats();
+    setInterval(loadStats, 3000);
+  </script>
+</body>
+</html>
