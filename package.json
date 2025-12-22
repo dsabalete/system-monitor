@@ -15,9 +15,7 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1",
-    "systeminformation": "^5.25.11"
-  },
-  "optionalDependencies": {
+    "systeminformation": "^5.25.11",
     "better-sqlite3": "^9.4.0"
   },
   "devDependencies": {}

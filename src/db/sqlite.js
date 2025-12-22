@@ -2,9 +2,16 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const path = require("path");
 const fs = require("fs");
+let BetterSqlite3 = null;
+try {
+  BetterSqlite3 = require("better-sqlite3");
+} catch (e) {
+  BetterSqlite3 = null;
+}
 
 const execFileAsync = promisify(execFile);
 let dbPathGlobal = null;
+let db = null;
 
 function initDatabase(dbPath = path.join(process.cwd(), "metrics.db")) {
   if (dbPathGlobal) return dbPathGlobal;
@@ -31,11 +38,34 @@ function initDatabase(dbPath = path.join(process.cwd(), "metrics.db")) {
     );
     CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics(ts_ms);
   `;
+  if (BetterSqlite3) {
+    db = new BetterSqlite3(dbPathGlobal);
+    db.exec(createSql);
+    return dbPathGlobal;
+  }
   return execFileAsync("sqlite3", [dbPathGlobal, createSql]).then(() => dbPathGlobal).catch(() => dbPathGlobal);
 }
 
 function execSql(sql) {
   if (!dbPathGlobal) initDatabase();
+  if (db) {
+    try {
+      const stmt = db.prepare(sql);
+      const isSelect = /^\s*select\b/i.test(sql);
+      if (isSelect) {
+        const rows = stmt.all();
+        if (!rows || rows.length === 0) return "";
+        const header = Object.keys(rows[0]);
+        const out = [header.join(",")].concat(rows.map((r) => header.map((k) => String(r[k])).join(","))).join("\n");
+        return out;
+      } else {
+        stmt.run();
+        return "";
+      }
+    } catch (e) {
+      return "";
+    }
+  }
   return execFileAsync("sqlite3", ["-csv", "-header", dbPathGlobal, sql]).then((res) => res.stdout || "");
 }
 
@@ -55,6 +85,36 @@ function insertMetric(sample) {
     tx_upload_bps: Number(sample.tx_upload_bps) || 0,
     tx_active_torrents: Number(sample.tx_active_torrents) || 0,
   };
+  if (db) {
+    const stmt = db.prepare(`
+      INSERT INTO metrics (
+        ts_ms, cpu_load1, cpu_load5, cpu_load15,
+        mem_used_mb, mem_total_mb,
+        disk_used_percent, disk_size_bytes,
+        net_rx_bps, net_tx_bps,
+        tx_download_bps, tx_upload_bps, tx_active_torrents
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    try {
+      stmt.run(
+        vals.ts_ms,
+        vals.cpu_load1,
+        vals.cpu_load5,
+        vals.cpu_load15,
+        vals.mem_used_mb,
+        vals.mem_total_mb,
+        vals.disk_used_percent,
+        vals.disk_size_bytes,
+        vals.net_rx_bps,
+        vals.net_tx_bps,
+        vals.tx_download_bps,
+        vals.tx_upload_bps,
+        vals.tx_active_torrents
+      );
+    } catch (e) {
+    }
+    return "";
+  }
   const sql = `
     INSERT INTO metrics (
       ts_ms, cpu_load1, cpu_load5, cpu_load15,
@@ -74,6 +134,24 @@ function insertMetric(sample) {
 }
 
 function getHistory({ limit = 360, fromMs = null } = {}) {
+  if (db) {
+    if (Number.isFinite(fromMs) && fromMs > 0) {
+      const stmt = db.prepare(`
+        SELECT * FROM metrics
+        WHERE ts_ms >= ?
+        ORDER BY ts_ms ASC
+      `);
+      return Promise.resolve(stmt.all(fromMs));
+    }
+    const stmt = db.prepare(`
+      SELECT * FROM metrics
+      ORDER BY ts_ms DESC
+      LIMIT ?
+    `);
+    const rows = stmt.all(limit);
+    rows.reverse();
+    return Promise.resolve(rows);
+  }
   if (Number.isFinite(fromMs) && fromMs > 0) {
     const sql = `
       SELECT * FROM metrics
