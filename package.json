@@ -16,5 +16,8 @@
     "express": "^5.2.1",
     "systeminformation": "^5.25.11"
   },
+  "optionalDependencies": {
+    "better-sqlite3": "^9.4.0"
+  },
   "devDependencies": {}
 }

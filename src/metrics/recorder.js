@@ -102,9 +102,8 @@ function createMetricsRecorder(statsCollector, { intervalMs = 10_000 } = {}) {
     try {
       const stats = await statsCollector.getStats();
       const sample = buildSample(stats);
-      insertMetric(sample);
+      await insertMetric(sample);
     } catch (e) {
-      // swallow
     }
   }
   function start() {
@@ -123,4 +122,3 @@ function createMetricsRecorder(statsCollector, { intervalMs = 10_000 } = {}) {
 module.exports = {
   createMetricsRecorder,
 };
-
