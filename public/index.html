@@ -190,6 +190,32 @@
     </div>
     <div id="transmission-torrents"></div>
   </div>
+  <div class="card">
+    <h3>📈 Históricos</h3>
+    <div class="card-content">
+      <div class="metric" style="min-width: 300px;">
+        <div class="metric-label">CPU Load (1m)</div>
+        <canvas id="chart-cpu"></canvas>
+      </div>
+      <div class="metric" style="min-width: 300px;">
+        <div class="metric-label">% RAM usada</div>
+        <canvas id="chart-ram"></canvas>
+      </div>
+      <div class="metric" style="min-width: 300px;">
+        <div class="metric-label">% Disco usado</div>
+        <canvas id="chart-disk"></canvas>
+      </div>
+      <div class="metric" style="min-width: 300px;">
+        <div class="metric-label">Red ↓/↑ (bps)</div>
+        <canvas id="chart-net"></canvas>
+      </div>
+      <div class="metric" style="min-width: 300px;">
+        <div class="metric-label">Transmission ↓/↑ (bps)</div>
+        <canvas id="chart-tx"></canvas>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
     async function loadStats() {
       try {
@@ -331,6 +357,99 @@
 
     loadStats();
     setInterval(loadStats, 5000);
+    let charts = { cpu: null, ram: null, disk: null, net: null, tx: null };
+    function makeLineChart(ctx, label, datasets) {
+      return new Chart(ctx, {
+        type: "line",
+        data: { labels: [], datasets },
+        options: {
+          responsive: true,
+          animation: false,
+          scales: {
+            x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
+            y: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
+          },
+          plugins: {
+            legend: { labels: { color: "#eee" } },
+          },
+        },
+      });
+    }
+    async function loadHistory() {
+      try {
+        const res = await fetch("/api/history?rangeSeconds=3600");
+        const { samples } = await res.json();
+        const labels = samples.map(s => new Date(s.ts_ms).toLocaleTimeString());
+        const cpu1 = samples.map(s => s.cpu_load1);
+        const ramPct = samples.map(s => s.mem_total_mb > 0 ? Math.round((s.mem_used_mb / s.mem_total_mb) * 100) : 0);
+        const diskPct = samples.map(s => s.disk_used_percent);
+        const netRx = samples.map(s => s.net_rx_bps);
+        const netTx = samples.map(s => s.net_tx_bps);
+        const txDl = samples.map(s => s.tx_download_bps);
+        const txUl = samples.map(s => s.tx_upload_bps);
+        if (!charts.cpu) {
+          charts.cpu = makeLineChart(document.getElementById("chart-cpu"), "CPU", [{
+            label: "Load 1m",
+            data: cpu1,
+            borderColor: "#4CAF50",
+            tension: 0.2,
+          }]);
+        } else {
+          charts.cpu.data.datasets[0].data = cpu1;
+        }
+        charts.cpu.data.labels = labels;
+        charts.cpu.update();
+        if (!charts.ram) {
+          charts.ram = makeLineChart(document.getElementById("chart-ram"), "RAM", [{
+            label: "% usada",
+            data: ramPct,
+            borderColor: "#03A9F4",
+            tension: 0.2,
+          }]);
+        } else {
+          charts.ram.data.datasets[0].data = ramPct;
+        }
+        charts.ram.data.labels = labels;
+        charts.ram.update();
+        if (!charts.disk) {
+          charts.disk = makeLineChart(document.getElementById("chart-disk"), "Disco", [{
+            label: "% usado",
+            data: diskPct,
+            borderColor: "#FFC107",
+            tension: 0.2,
+          }]);
+        } else {
+          charts.disk.data.datasets[0].data = diskPct;
+        }
+        charts.disk.data.labels = labels;
+        charts.disk.update();
+        if (!charts.net) {
+          charts.net = makeLineChart(document.getElementById("chart-net"), "Red", [
+            { label: "↓ bps", data: netRx, borderColor: "#8BC34A", tension: 0.2 },
+            { label: "↑ bps", data: netTx, borderColor: "#E91E63", tension: 0.2 },
+          ]);
+        } else {
+          charts.net.data.datasets[0].data = netRx;
+          charts.net.data.datasets[1].data = netTx;
+        }
+        charts.net.data.labels = labels;
+        charts.net.update();
+        if (!charts.tx) {
+          charts.tx = makeLineChart(document.getElementById("chart-tx"), "Transmission", [
+            { label: "↓ bps", data: txDl, borderColor: "#00BCD4", tension: 0.2 },
+            { label: "↑ bps", data: txUl, borderColor: "#9C27B0", tension: 0.2 },
+          ]);
+        } else {
+          charts.tx.data.datasets[0].data = txDl;
+          charts.tx.data.datasets[1].data = txUl;
+        }
+        charts.tx.data.labels = labels;
+        charts.tx.update();
+      } catch (e) {
+      }
+    }
+    loadHistory();
+    setInterval(loadHistory, 10000);
   </script>
 </body>
 
