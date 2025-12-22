@@ -18,6 +18,18 @@ function formatBandwidth(bps) {
   return `${bps.toFixed(2)} bps`;
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let idx = 0;
+  let value = bytes;
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024;
+    idx += 1;
+  }
+  return `${value.toFixed(2)} ${units[idx]}`;
+}
+
 function parseThrottlingStatus(throttledHex) {
   const flags = parseInt(String(throttledHex || "0"), 16) || 0;
   const statusFlags = {
@@ -45,6 +57,7 @@ function parseThrottlingStatus(throttledHex) {
 
 module.exports = {
   formatBandwidth,
+  formatBytes,
   formatUptime,
   parseThrottlingStatus,
 };

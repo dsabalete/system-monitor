@@ -5,14 +5,16 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node test/format.test.js"
+    "test": "node test/format.test.js",
+    "stats": "node scripts/print-stats.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "systeminformation": "^5.25.11"
   },
   "devDependencies": {}
 }

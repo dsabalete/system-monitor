@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8" />
   <title>System Monitor</title>
@@ -12,10 +13,12 @@
       max-width: 1200px;
       margin: 0 auto;
     }
+
     h1 {
       text-align: center;
       color: #4CAF50;
     }
+
     .card {
       background: #222;
       font-size: 1.2em;
@@ -24,57 +27,69 @@
       border-radius: 8px;
       border-left: 4px solid #4CAF50;
     }
+
     .card h3 {
       margin: 0 0 10px 0;
       color: #4CAF50;
       font-size: 1.1em;
     }
+
     .card-content {
       display: flex;
       flex-wrap: wrap;
       gap: 15px;
     }
+
     .metric {
       flex: 1;
       min-width: 200px;
     }
+
     .metric-label {
       color: #aaa;
       font-size: 0.9em;
     }
+
     .metric-value {
       color: #fff;
       font-size: 1.1em;
       font-weight: bold;
     }
+
     .network-interface {
       background: #1a1a1a;
       padding: 10px;
       margin: 5px 0;
       border-radius: 4px;
     }
+
     .ip-list {
       display: flex;
       flex-direction: column;
       gap: 5px;
     }
+
     .ip-item {
       background: #1a1a1a;
       padding: 8px;
       border-radius: 4px;
       font-family: monospace;
     }
+
     .throttling-normal {
       color: #4CAF50;
     }
+
     .throttling-warning {
       color: #ff9800;
     }
+
     .throttling-error {
       color: #f44336;
     }
   </style>
 </head>
+
 <body>
   <h1>📊 Raspberry Pi Monitor</h1>
 
@@ -153,6 +168,28 @@
     <div class="metric-value" id="throttling"></div>
   </div>
 
+  <div class="card">
+    <h3>🧲 Transmission</h3>
+    <div class="card-content">
+      <div class="metric">
+        <div class="metric-label">Estado:</div>
+        <div class="metric-value" id="transmission-status"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">↓ Velocidad global:</div>
+        <div class="metric-value" id="transmission-download"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">↑ Velocidad global:</div>
+        <div class="metric-value" id="transmission-upload"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Torrents activos:</div>
+        <div class="metric-value" id="transmission-active-count"></div>
+      </div>
+    </div>
+    <div id="transmission-torrents"></div>
+  </div>
   <script>
     async function loadStats() {
       try {
@@ -182,16 +219,31 @@
         // Network Usage
         const networkDiv = document.getElementById("network");
         const bandwidth = data.network.bandwidth || {};
+        const totals = data.network.totals || {};
         if (Object.keys(bandwidth).length === 0) {
           networkDiv.innerHTML = '<div class="metric-value">Collecting data...</div>';
         } else {
           let networkHTML = "";
+          if (totals.aggregate) {
+            networkHTML += `
+              <div class="network-interface">
+                <strong>Total (todas las interfaces):</strong><br>
+                <span class="metric-label">↓ Total:</span> ${totals.aggregate.rxTotal}<br>
+                <span class="metric-label">↑ Total:</span> ${totals.aggregate.txTotal}
+              </div>
+            `;
+          }
           for (const [interface, stats] of Object.entries(bandwidth)) {
+            const ifaceTotals = totals.perInterface ? totals.perInterface[interface] : null;
             networkHTML += `
               <div class="network-interface">
                 <strong>${interface}:</strong><br>
                 <span class="metric-label">↓ Download:</span> ${stats.rx}<br>
-                <span class="metric-label">↑ Upload:</span> ${stats.tx}
+                <span class="metric-label">↑ Upload:</span> ${stats.tx}<br>
+                ${ifaceTotals ? `
+                  <span class="metric-label">↓ Total:</span> ${ifaceTotals.rxTotal}<br>
+                  <span class="metric-label">↑ Total:</span> ${ifaceTotals.txTotal}
+                ` : ``}
               </div>
             `;
           }
@@ -200,7 +252,7 @@
 
         // IP Addresses
         document.getElementById("public-ip").textContent = data.ipAddresses.public;
-        
+
         const ipv4Div = document.getElementById("local-ipv4");
         if (data.ipAddresses.local.ipv4.length === 0) {
           ipv4Div.innerHTML = '<div class="ip-item">None</div>';
@@ -209,7 +261,7 @@
             .map(ip => `<div class="ip-item">${ip.interface}: ${ip.address}</div>`)
             .join("");
         }
-        
+
         const ipv6Div = document.getElementById("local-ipv6");
         if (data.ipAddresses.local.ipv6.length === 0) {
           ipv6Div.innerHTML = '<div class="ip-item">None</div>';
@@ -224,19 +276,62 @@
         const throttlingStatus = data.throttling.status;
         let throttlingClass = "throttling-normal";
         if (throttlingStatus !== "Normal") {
-          throttlingClass = throttlingStatus.includes("Throttled") || throttlingStatus.includes("Undervoltage") 
-            ? "throttling-error" 
+          throttlingClass = throttlingStatus.includes("Throttled") || throttlingStatus.includes("Undervoltage")
+            ? "throttling-error"
             : "throttling-warning";
         }
         throttlingDiv.className = `metric-value ${throttlingClass}`;
         throttlingDiv.textContent = throttlingStatus;
+
+        // Transmission
+        const tx = data.transmission || {};
+        const txStatusDiv = document.getElementById("transmission-status");
+        const txDlDiv = document.getElementById("transmission-download");
+        const txUlDiv = document.getElementById("transmission-upload");
+        const txActiveCountDiv = document.getElementById("transmission-active-count");
+        const txTorrentsDiv = document.getElementById("transmission-torrents");
+        if (!tx.enabled) {
+          txStatusDiv.textContent = "Deshabilitado";
+          txDlDiv.textContent = "-";
+          txUlDiv.textContent = "-";
+          txActiveCountDiv.textContent = "0";
+          txTorrentsDiv.innerHTML = '<div class="metric-value">No hay datos</div>';
+        } else if (tx.error) {
+          txStatusDiv.textContent = tx.error;
+          txDlDiv.textContent = "-";
+          txUlDiv.textContent = "-";
+          txActiveCountDiv.textContent = "0";
+          txTorrentsDiv.innerHTML = '<div class="metric-value">Error obteniendo torrents</div>';
+        } else {
+          txStatusDiv.textContent = "OK";
+          txDlDiv.textContent = tx.session?.download || "-";
+          txUlDiv.textContent = tx.session?.upload || "-";
+          txActiveCountDiv.textContent = String(tx.session?.activeTorrents ?? 0);
+          const list = Array.isArray(tx.torrents) ? tx.torrents : [];
+          if (list.length === 0) {
+            txTorrentsDiv.innerHTML = '<div class="metric-value">Sin torrents activos</div>';
+          } else {
+            txTorrentsDiv.innerHTML = list
+              .map(t => `
+                <div class="network-interface">
+                  <strong>${t.name}</strong><br>
+                  <span class="metric-label">Estado:</span> ${t.status}<br>
+                  <span class="metric-label">↓:</span> ${t.download} &nbsp; 
+                  <span class="metric-label">↑:</span> ${t.upload} &nbsp; 
+                  <span class="metric-label">Progreso:</span> ${t.progress}
+                </div>
+              `)
+              .join("");
+          }
+        }
       } catch (error) {
         console.error("Error loading stats:", error);
       }
     }
 
     loadStats();
-    setInterval(loadStats, 3000);
+    setInterval(loadStats, 5000);
   </script>
 </body>
+
 </html>

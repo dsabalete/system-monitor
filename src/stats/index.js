@@ -3,9 +3,18 @@ const { exec } = require("child_process");
 const { promisify } = require("util");
 const fs = require("fs").promises;
 const https = require("https");
+const si = require("systeminformation");
+const http = require("http");
 
-const { formatBandwidth, formatUptime, parseThrottlingStatus } = require("./format");
-const { COMMAND_TIMEOUT_MS, PUBLIC_IP_TIMEOUT_MS } = require("../config");
+const { formatBandwidth, formatBytes, formatUptime, parseThrottlingStatus } = require("./format");
+const {
+  COMMAND_TIMEOUT_MS,
+  PUBLIC_IP_TIMEOUT_MS,
+  TRANSMISSION_URL,
+  TRANSMISSION_USERNAME,
+  TRANSMISSION_PASSWORD,
+  TRANSMISSION_TIMEOUT_MS,
+} = require("../config");
 
 const execAsync = promisify(exec);
 
@@ -27,21 +36,16 @@ async function runCommand(command, { timeoutMs = COMMAND_TIMEOUT_MS } = {}) {
 
 async function getNetworkStats() {
   try {
-    const data = await fs.readFile("/proc/net/dev", "utf8");
-    const lines = data.split("\n").slice(2);
+    const list = await si.networkStats();
     const stats = {};
-
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 10) continue;
-
-      const iface = parts[0].replace(":", "");
+    for (const item of list || []) {
+      const iface = String(item.iface || "").trim();
+      if (!iface) continue;
       stats[iface] = {
-        rxBytes: Number.parseInt(parts[1], 10) || 0,
-        txBytes: Number.parseInt(parts[9], 10) || 0,
+        rxBytes: Number(item.rx_bytes) || 0,
+        txBytes: Number(item.tx_bytes) || 0,
       };
     }
-
     return stats;
   } catch (_error) {
     return {};
@@ -69,6 +73,29 @@ function calculateNetworkBandwidth(currentStats, previousStats, timeDeltaSeconds
   }
 
   return bandwidth;
+}
+
+function formatTotals(currentStats) {
+  const perInterface = {};
+  let aggRx = 0;
+  let aggTx = 0;
+  for (const [iface, cur] of Object.entries(currentStats)) {
+    const rx = Number(cur.rxBytes) || 0;
+    const tx = Number(cur.txBytes) || 0;
+    perInterface[iface] = {
+      rxTotal: formatBytes(rx),
+      txTotal: formatBytes(tx),
+    };
+    aggRx += rx;
+    aggTx += tx;
+  }
+  return {
+    perInterface,
+    aggregate: {
+      rxTotal: formatBytes(aggRx),
+      txTotal: formatBytes(aggTx),
+    },
+  };
 }
 
 function getLocalIPs() {
@@ -125,19 +152,44 @@ function getPublicIP() {
 }
 
 async function getDiskUsage() {
-  const stdout = await runCommand("df -h / | tail -1");
-  if (!stdout) return { used: "N/A", size: "N/A" };
-
-  const parts = stdout.trim().split(/\s+/);
-  const size = parts[1] || "N/A";
-  const used = parts[4] || "N/A";
-  return { used, size };
+  try {
+    const disks = await si.fsSize();
+    let target = null;
+    for (const d of disks || []) {
+      if (d.mount === "/") {
+        target = d;
+        break;
+      }
+    }
+    if (!target && (disks || []).length > 0) {
+      target = disks.reduce((a, b) => ((b.size || 0) > (a.size || 0) ? b : a), disks[0]);
+    }
+    if (!target) return { used: "N/A", size: "N/A" };
+    const sizeBytes = Number(target.size) || 0;
+    const usedPercent =
+      Number.isFinite(target.use) && target.use > 0
+        ? Number(target.use)
+        : sizeBytes > 0
+          ? ((Number(target.used) || 0) / sizeBytes) * 100
+          : 0;
+    return { used: `${usedPercent.toFixed(0)}%`, size: formatBytes(sizeBytes) };
+  } catch (_error) {
+    return { used: "N/A", size: "N/A" };
+  }
 }
 
 async function getGpuTemp() {
-  const stdout = await runCommand("vcgencmd measure_temp");
-  if (!stdout) return "0.0°C";
-  return stdout.replace("temp=", "").replace("'C", "°C");
+  try {
+    const graphics = await si.graphics();
+    const controller = (graphics.controllers || []).find((c) => Number.isFinite(c.temperatureGpu));
+    const temp = controller ? controller.temperatureGpu : null;
+    if (!Number.isFinite(temp)) return "0.0°C";
+    return `${Number(temp).toFixed(1)}°C`;
+  } catch (_error) {
+    const stdout = await runCommand("vcgencmd measure_temp");
+    if (!stdout) return "0.0°C";
+    return stdout.replace("temp=", "").replace("'C", "°C");
+  }
 }
 
 async function getThrottlingHex() {
@@ -148,12 +200,152 @@ async function getThrottlingHex() {
 
 async function getCpuTemp() {
   try {
-    const raw = await fs.readFile("/sys/class/thermal/thermal_zone0/temp", "utf8");
-    const millidegrees = Number.parseInt(String(raw).trim(), 10) || 0;
-    return `${(millidegrees / 1000).toFixed(1)}°C`;
+    const t = await si.cpuTemperature();
+    const temp =
+      Array.isArray(t?.cores) && t.cores.length
+        ? t.cores[0]
+        : Number.isFinite(t?.main)
+          ? t.main
+          : null;
+    if (!Number.isFinite(temp)) {
+      const raw = await fs.readFile("/sys/class/thermal/thermal_zone0/temp", "utf8").catch(() => null);
+      if (!raw) return "0.0°C";
+      const millidegrees = Number.parseInt(String(raw).trim(), 10) || 0;
+      return `${(millidegrees / 1000).toFixed(1)}°C`;
+    }
+    return `${Number(temp).toFixed(1)}°C`;
   } catch (_error) {
     return "0.0°C";
   }
+}
+
+function transmissionHttpRequest(body, sessionId) {
+  if (!TRANSMISSION_URL) return Promise.resolve(null);
+  try {
+    const url = new URL(TRANSMISSION_URL);
+    const isHttps = url.protocol === "https:";
+    const mod = isHttps ? https : http;
+    const authHeader =
+      TRANSMISSION_USERNAME && TRANSMISSION_PASSWORD
+        ? "Basic " + Buffer.from(`${TRANSMISSION_USERNAME}:${TRANSMISSION_PASSWORD}`).toString("base64")
+        : null;
+    const headers = {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(JSON.stringify(body)),
+    };
+    if (authHeader) headers["Authorization"] = authHeader;
+    if (sessionId) headers["X-Transmission-Session-Id"] = sessionId;
+    const options = {
+      hostname: url.hostname,
+      port: url.port ? Number(url.port) : (isHttps ? 443 : 80),
+      path: url.pathname || "/transmission/rpc",
+      method: "POST",
+      timeout: TRANSMISSION_TIMEOUT_MS || 3000,
+      headers,
+    };
+    return new Promise((resolve) => {
+      const req = mod.request(options, (res) => {
+        let data = "";
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+        res.on("end", () => {
+          const sessionHeader = res.headers["x-transmission-session-id"];
+          try {
+            const json = JSON.parse(data || "{}");
+            resolve({ statusCode: res.statusCode || 0, data: json, sessionId: sessionHeader || null });
+          } catch (_e) {
+            resolve({ statusCode: res.statusCode || 0, data: null, sessionId: sessionHeader || null });
+          }
+        });
+      });
+      req.on("error", () => resolve(null));
+      req.on("timeout", () => {
+        req.destroy();
+        resolve(null);
+      });
+      req.write(JSON.stringify(body));
+      req.end();
+    });
+  } catch (_e) {
+    return Promise.resolve(null);
+  }
+}
+
+async function transmissionRpc(body) {
+  const first = await transmissionHttpRequest(body, null);
+  if (!first) return null;
+  if (first.statusCode === 409 && first.sessionId) {
+    const second = await transmissionHttpRequest(body, first.sessionId);
+    return second;
+  }
+  return first;
+}
+
+function mapTransmissionStatus(code) {
+  switch (code) {
+    case 0:
+      return "stopped";
+    case 1:
+      return "check_wait";
+    case 2:
+      return "checking";
+    case 3:
+      return "download_wait";
+    case 4:
+      return "downloading";
+    case 5:
+      return "seed_wait";
+    case 6:
+      return "seeding";
+    default:
+      return "unknown";
+  }
+}
+
+async function getTransmissionStats() {
+  if (!TRANSMISSION_URL) {
+    return { enabled: false };
+  }
+  const sessionReq = await withTimeout(
+    transmissionRpc({ method: "session-stats", arguments: {} }),
+    TRANSMISSION_TIMEOUT_MS
+  );
+  const torrentsReq = await withTimeout(
+    transmissionRpc({
+      method: "torrent-get",
+      arguments: {
+        fields: ["id", "name", "status", "rateDownload", "rateUpload", "percentDone", "errorString"],
+      },
+    }),
+    TRANSMISSION_TIMEOUT_MS
+  );
+  if (!sessionReq || !torrentsReq || !sessionReq.data || !torrentsReq.data) {
+    return { enabled: true, error: "No disponible" };
+  }
+  const session = sessionReq.data.arguments || {};
+  const torrents = Array.isArray(torrentsReq.data.arguments?.torrents)
+    ? torrentsReq.data.arguments.torrents
+    : [];
+  const active = torrents.filter((t) => t && (t.status === 4 || t.status === 6));
+  return {
+    enabled: true,
+    session: {
+      download: formatBandwidth(((session.downloadSpeed || 0) * 8) || 0),
+      upload: formatBandwidth(((session.uploadSpeed || 0) * 8) || 0),
+      activeTorrents: Number(session.activeTorrentCount || 0),
+      pausedTorrents: Number(session.pausedTorrentCount || 0),
+    },
+    torrents: active.map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: mapTransmissionStatus(t.status),
+      download: formatBandwidth(((t.rateDownload || 0) * 8) || 0),
+      upload: formatBandwidth(((t.rateUpload || 0) * 8) || 0),
+      progress: ((t.percentDone || 0) * 100).toFixed(1) + "%",
+      error: t.errorString || "",
+    })),
+  };
 }
 
 function createStatsCollector({ now = () => Date.now() } = {}) {
@@ -163,10 +355,15 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
   async function getStats() {
     const loadAvg = os.loadavg();
     const uptimeSeconds = os.uptime();
-
-    const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const usedMem = totalMem - freeMem;
+    let totalMem = os.totalmem();
+    let usedMem = totalMem - os.freemem();
+    try {
+      const mem = await si.mem();
+      if (mem && Number.isFinite(mem.total) && Number.isFinite(mem.used)) {
+        totalMem = mem.total;
+        usedMem = mem.used;
+      }
+    } catch (_e) { }
 
     const currentNetworkStats = await getNetworkStats();
     const currentTimestampMs = now();
@@ -179,18 +376,20 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
       previousNetworkStats,
       timeDeltaSeconds
     );
+    const networkTotals = formatTotals(currentNetworkStats);
 
     previousNetworkStats = currentNetworkStats;
     previousNetworkTimestampMs = currentTimestampMs;
 
     const localIPs = getLocalIPs();
 
-    const [disk, throttlingHex, gpuTemp, cpuTemp, publicIP] = await Promise.all([
+    const [disk, throttlingHex, gpuTemp, cpuTemp, publicIP, transmission] = await Promise.all([
       getDiskUsage(),
       getThrottlingHex(),
       getGpuTemp(),
       getCpuTemp(),
       withTimeout(getPublicIP(), PUBLIC_IP_TIMEOUT_MS),
+      getTransmissionStats(),
     ]);
 
     return {
@@ -214,12 +413,14 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
       },
       network: {
         bandwidth: networkBandwidth,
+        totals: networkTotals,
       },
       ipAddresses: {
         public: publicIP || "Unable to fetch",
         local: localIPs,
       },
       throttling: parseThrottlingStatus(throttlingHex),
+      transmission,
     };
   }
 
