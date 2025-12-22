@@ -337,7 +337,12 @@ function mapTransmissionStatus(code) {
 
 async function getTransmissionStats() {
   if (!TRANSMISSION_URL) {
-    return { enabled: false };
+    return { enabled: false, reason: "TRANSMISSION_URL no configurada" };
+  }
+  try {
+    new URL(TRANSMISSION_URL);
+  } catch (_e) {
+    return { enabled: true, error: "TRANSMISSION_URL inválida" };
   }
   const txTimeoutMs = Number(TRANSMISSION_TIMEOUT_MS) || 3000;
   const sessionReq = await withTimeout(

@@ -317,11 +317,13 @@
         const txActiveCountDiv = document.getElementById("transmission-active-count");
         const txTorrentsDiv = document.getElementById("transmission-torrents");
         if (!tx.enabled) {
-          txStatusDiv.textContent = "Deshabilitado";
+          txStatusDiv.textContent = tx.reason ? `Deshabilitado (${tx.reason})` : "Deshabilitado";
           txDlDiv.textContent = "-";
           txUlDiv.textContent = "-";
           txActiveCountDiv.textContent = "0";
-          txTorrentsDiv.innerHTML = '<div class="metric-value">No hay datos</div>';
+          txTorrentsDiv.innerHTML = tx.reason
+            ? `<div class="metric-value">${tx.reason}</div>`
+            : '<div class="metric-value">No hay datos</div>';
         } else if (tx.error) {
           txStatusDiv.textContent = tx.error;
           txDlDiv.textContent = "-";
