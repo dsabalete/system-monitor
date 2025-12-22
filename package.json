@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "test": "node test/format.test.js",
-    "stats": "node scripts/print-stats.js"
+    "stats": "node scripts/print-stats.js",
+    "update-and-restart": "git fetch && git pull && sudo systemctl restart system-monitor"
   },
   "keywords": [],
   "author": "",
