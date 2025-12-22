@@ -43,7 +43,7 @@ npm install
 3. Start the server:
 
 ```bash
-node index.js
+npm start
 ```
 
 4. Open your browser and navigate to:
@@ -65,6 +65,11 @@ http://<raspberry-pi-ip>:3000
 - **Backend**: Node.js with Express.js
 - **Frontend**: Vanilla HTML/CSS/JavaScript
 - **API**: RESTful endpoint at `/api/stats`
+- **Structure**:
+  - `index.js`: server entrypoint
+  - `src/app.js`: Express app + routes
+  - `src/stats/`: stats collection and formatting
+  - `src/config.js`: environment configuration
 
 ### Monitored Metrics
 
@@ -146,11 +151,17 @@ Returns a JSON object with all system metrics:
 
 ## 📝 Configuration
 
-The server runs on port `3000` by default. To change this, modify the `PORT` constant in `index.js`:
+The server runs on port `3000` by default. Override settings with environment variables:
 
-```javascript
-const PORT = 3000; // Change to your preferred port
+```bash
+PORT=4000 npm start
 ```
+
+Available environment variables:
+
+- `PORT`: HTTP server port (default: `3000`)
+- `COMMAND_TIMEOUT_MS`: timeout for shell commands like `vcgencmd`/`df` (default: `2000`)
+- `PUBLIC_IP_TIMEOUT_MS`: timeout for public IP lookup (default: `3000`)
 
 ## 🔧 Troubleshooting
 
