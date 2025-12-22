@@ -17,12 +17,28 @@ const {
 } = require("../config");
 
 const execAsync = promisify(exec);
+const transmissionSessionIds = new Map();
 
 function withTimeout(promise, ms) {
   return Promise.race([
     promise,
     new Promise((resolve) => setTimeout(() => resolve(null), ms)),
   ]);
+}
+
+function extractTransmissionSessionIdFromText(text) {
+  const match = String(text || "").match(/X-Transmission-Session-Id:\s*([^\s<]+)/i);
+  return match ? match[1] : null;
+}
+
+function getTransmissionEndpoint() {
+  const url = new URL(TRANSMISSION_URL);
+  const isHttps = url.protocol === "https:";
+  const mod = isHttps ? https : http;
+  const port = url.port ? Number(url.port) : (isHttps ? 443 : 80);
+  const path = url.pathname && url.pathname !== "/" ? url.pathname : "/transmission/rpc";
+  const key = `${url.protocol}//${url.hostname}:${port}${path}`;
+  return { url, isHttps, mod, port, path, key };
 }
 
 async function runCommand(command, { timeoutMs = COMMAND_TIMEOUT_MS } = {}) {
@@ -219,38 +235,37 @@ async function getCpuTemp() {
   }
 }
 
-function transmissionHttpRequest(body, sessionId) {
+function transmissionHttpRequest(endpoint, body, sessionId) {
   if (!TRANSMISSION_URL) return Promise.resolve(null);
   try {
-    const url = new URL(TRANSMISSION_URL);
-    const isHttps = url.protocol === "https:";
-    const mod = isHttps ? https : http;
     const authHeader =
       TRANSMISSION_USERNAME && TRANSMISSION_PASSWORD
         ? "Basic " + Buffer.from(`${TRANSMISSION_USERNAME}:${TRANSMISSION_PASSWORD}`).toString("base64")
         : null;
+    const payload = JSON.stringify(body || {});
     const headers = {
       "Content-Type": "application/json",
-      "Content-Length": Buffer.byteLength(JSON.stringify(body)),
+      "Content-Length": Buffer.byteLength(payload),
     };
     if (authHeader) headers["Authorization"] = authHeader;
     if (sessionId) headers["X-Transmission-Session-Id"] = sessionId;
     const options = {
-      hostname: url.hostname,
-      port: url.port ? Number(url.port) : (isHttps ? 443 : 80),
-      path: url.pathname || "/transmission/rpc",
+      hostname: endpoint.url.hostname,
+      port: endpoint.port,
+      path: endpoint.path,
       method: "POST",
       timeout: TRANSMISSION_TIMEOUT_MS || 3000,
       headers,
     };
     return new Promise((resolve) => {
-      const req = mod.request(options, (res) => {
+      const req = endpoint.mod.request(options, (res) => {
         let data = "";
         res.on("data", (chunk) => {
           data += chunk;
         });
         res.on("end", () => {
-          const sessionHeader = res.headers["x-transmission-session-id"];
+          const sessionHeader =
+            res.headers["x-transmission-session-id"] || extractTransmissionSessionIdFromText(data);
           try {
             const json = JSON.parse(data || "{}");
             resolve({ statusCode: res.statusCode || 0, data: json, sessionId: sessionHeader || null });
@@ -264,7 +279,7 @@ function transmissionHttpRequest(body, sessionId) {
         req.destroy();
         resolve(null);
       });
-      req.write(JSON.stringify(body));
+      req.write(payload);
       req.end();
     });
   } catch (_e) {
@@ -273,10 +288,27 @@ function transmissionHttpRequest(body, sessionId) {
 }
 
 async function transmissionRpc(body) {
-  const first = await transmissionHttpRequest(body, null);
+  let endpoint;
+  try {
+    endpoint = getTransmissionEndpoint();
+  } catch (_e) {
+    return null;
+  }
+  const cachedSessionId = transmissionSessionIds.get(endpoint.key) || null;
+  const first = await transmissionHttpRequest(endpoint, body, cachedSessionId);
   if (!first) return null;
-  if (first.statusCode === 409 && first.sessionId) {
-    const second = await transmissionHttpRequest(body, first.sessionId);
+  if (first.sessionId) transmissionSessionIds.set(endpoint.key, first.sessionId);
+  if (first.statusCode === 409) {
+    const retrySessionId = first.sessionId || transmissionSessionIds.get(endpoint.key) || null;
+    if (!retrySessionId) return first;
+    const second = await transmissionHttpRequest(endpoint, body, retrySessionId);
+    if (!second) return null;
+    if (second.sessionId) transmissionSessionIds.set(endpoint.key, second.sessionId);
+    if (second.statusCode === 409 && second.sessionId && second.sessionId !== retrySessionId) {
+      const third = await transmissionHttpRequest(endpoint, body, second.sessionId);
+      if (third?.sessionId) transmissionSessionIds.set(endpoint.key, third.sessionId);
+      return third;
+    }
     return second;
   }
   return first;
@@ -307,9 +339,10 @@ async function getTransmissionStats() {
   if (!TRANSMISSION_URL) {
     return { enabled: false };
   }
+  const txTimeoutMs = Number(TRANSMISSION_TIMEOUT_MS) || 3000;
   const sessionReq = await withTimeout(
     transmissionRpc({ method: "session-stats", arguments: {} }),
-    TRANSMISSION_TIMEOUT_MS
+    txTimeoutMs * 2
   );
   const torrentsReq = await withTimeout(
     transmissionRpc({
@@ -318,7 +351,7 @@ async function getTransmissionStats() {
         fields: ["id", "name", "status", "rateDownload", "rateUpload", "percentDone", "errorString"],
       },
     }),
-    TRANSMISSION_TIMEOUT_MS
+    txTimeoutMs * 2
   );
   if (!sessionReq || !torrentsReq || !sessionReq.data || !torrentsReq.data) {
     return { enabled: true, error: "No disponible" };
