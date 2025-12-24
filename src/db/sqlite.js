@@ -28,6 +28,8 @@ function initDatabase(dbPath = path.join(process.cwd(), "metrics.db")) {
       cpu_load15 REAL,
       mem_used_mb INTEGER,
       mem_total_mb INTEGER,
+      mem_swap_used_mb INTEGER,
+      mem_swap_total_mb INTEGER,
       disk_used_percent REAL,
       disk_size_bytes INTEGER,
       net_rx_bps REAL,
@@ -41,9 +43,25 @@ function initDatabase(dbPath = path.join(process.cwd(), "metrics.db")) {
   if (BetterSqlite3) {
     db = new BetterSqlite3(dbPathGlobal);
     db.exec(createSql);
+    try {
+      db.exec("ALTER TABLE metrics ADD COLUMN mem_swap_used_mb INTEGER");
+    } catch (e) {}
+    try {
+      db.exec("ALTER TABLE metrics ADD COLUMN mem_swap_total_mb INTEGER");
+    } catch (e) {}
     return dbPathGlobal;
   }
-  return execFileAsync("sqlite3", [dbPathGlobal, createSql]).then(() => dbPathGlobal).catch(() => dbPathGlobal);
+  return execFileAsync("sqlite3", [dbPathGlobal, createSql])
+    .then(() => dbPathGlobal)
+    .catch(() => dbPathGlobal)
+    .finally(async () => {
+      try {
+        await execFileAsync("sqlite3", [dbPathGlobal, "ALTER TABLE metrics ADD COLUMN mem_swap_used_mb INTEGER"]);
+      } catch (e) {}
+      try {
+        await execFileAsync("sqlite3", [dbPathGlobal, "ALTER TABLE metrics ADD COLUMN mem_swap_total_mb INTEGER"]);
+      } catch (e) {}
+    });
 }
 
 function execSql(sql) {
@@ -77,6 +95,8 @@ function insertMetric(sample) {
     cpu_load15: Number(sample.cpu_load15) || 0,
     mem_used_mb: Number(sample.mem_used_mb) || 0,
     mem_total_mb: Number(sample.mem_total_mb) || 0,
+    mem_swap_used_mb: Number(sample.mem_swap_used_mb) || 0,
+    mem_swap_total_mb: Number(sample.mem_swap_total_mb) || 0,
     disk_used_percent: Number(sample.disk_used_percent) || 0,
     disk_size_bytes: Number(sample.disk_size_bytes) || 0,
     net_rx_bps: Number(sample.net_rx_bps) || 0,
@@ -89,11 +109,11 @@ function insertMetric(sample) {
     const stmt = db.prepare(`
       INSERT INTO metrics (
         ts_ms, cpu_load1, cpu_load5, cpu_load15,
-        mem_used_mb, mem_total_mb,
+        mem_used_mb, mem_total_mb, mem_swap_used_mb, mem_swap_total_mb,
         disk_used_percent, disk_size_bytes,
         net_rx_bps, net_tx_bps,
         tx_download_bps, tx_upload_bps, tx_active_torrents
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     try {
       stmt.run(
@@ -103,6 +123,8 @@ function insertMetric(sample) {
         vals.cpu_load15,
         vals.mem_used_mb,
         vals.mem_total_mb,
+        vals.mem_swap_used_mb,
+        vals.mem_swap_total_mb,
         vals.disk_used_percent,
         vals.disk_size_bytes,
         vals.net_rx_bps,
@@ -118,13 +140,13 @@ function insertMetric(sample) {
   const sql = `
     INSERT INTO metrics (
       ts_ms, cpu_load1, cpu_load5, cpu_load15,
-      mem_used_mb, mem_total_mb,
+      mem_used_mb, mem_total_mb, mem_swap_used_mb, mem_swap_total_mb,
       disk_used_percent, disk_size_bytes,
       net_rx_bps, net_tx_bps,
       tx_download_bps, tx_upload_bps, tx_active_torrents
     ) VALUES (
       ${vals.ts_ms}, ${vals.cpu_load1}, ${vals.cpu_load5}, ${vals.cpu_load15},
-      ${vals.mem_used_mb}, ${vals.mem_total_mb},
+      ${vals.mem_used_mb}, ${vals.mem_total_mb}, ${vals.mem_swap_used_mb}, ${vals.mem_swap_total_mb},
       ${vals.disk_used_percent}, ${vals.disk_size_bytes},
       ${vals.net_rx_bps}, ${vals.net_tx_bps},
       ${vals.tx_download_bps}, ${vals.tx_upload_bps}, ${vals.tx_active_torrents}

@@ -121,6 +121,10 @@
     <h3>🧮 RAM</h3>
     <div class="metric-value" id="ram"></div>
   </div>
+  <div class="card">
+    <h3>🔄 Swap</h3>
+    <div class="metric-value" id="swap"></div>
+  </div>
 
   <div class="card">
     <h3>🌡️ Temperature</h3>
@@ -203,6 +207,10 @@
         <canvas id="chart-ram"></canvas>
       </div>
       <div class="metric" style="min-width: 300px;">
+        <div class="metric-label">% Swap usada</div>
+        <canvas id="chart-swap"></canvas>
+      </div>
+      <div class="metric" style="min-width: 300px;">
         <div class="metric-label">% Disco usado</div>
         <canvas id="chart-disk"></canvas>
       </div>
@@ -234,6 +242,10 @@
         // RAM
         document.getElementById("ram").textContent =
           `${data.memory.used} / ${data.memory.total} MB`;
+        const swapDiv = document.getElementById("swap");
+        if (swapDiv) {
+          swapDiv.textContent = `${data.memory.swapUsed} / ${data.memory.swapTotal} MB`;
+        }
 
         // Temperature
         document.getElementById("temp-cpu").textContent = data.temperature.cpu;
@@ -360,7 +372,7 @@
 
     loadStats();
     setInterval(loadStats, 5000);
-    let charts = { cpu: null, ram: null, disk: null, net: null, tx: null };
+    let charts = { cpu: null, ram: null, swap: null, disk: null, net: null, tx: null };
     function makeLineChart(ctx, label, datasets) {
       return new Chart(ctx, {
         type: "line",
@@ -390,6 +402,7 @@
         const netTx = samples.map(s => s.net_tx_bps);
         const txDl = samples.map(s => s.tx_download_bps);
         const txUl = samples.map(s => s.tx_upload_bps);
+        const swapPct = samples.map(s => (s.mem_swap_total_mb > 0 ? Math.round((s.mem_swap_used_mb / s.mem_swap_total_mb) * 100) : 0));
         if (!charts.cpu) {
           charts.cpu = makeLineChart(document.getElementById("chart-cpu"), "CPU", [{
             label: "Load 1m",
@@ -414,6 +427,23 @@
         }
         charts.ram.data.labels = labels;
         charts.ram.update();
+        if (!charts.swap) {
+          const el = document.getElementById("chart-swap");
+          if (el) {
+            charts.swap = makeLineChart(el, "Swap", [{
+              label: "% usada",
+              data: swapPct,
+              borderColor: "#9E9E9E",
+              tension: 0.2,
+            }]);
+          }
+        } else {
+          charts.swap.data.datasets[0].data = swapPct;
+        }
+        if (charts.swap) {
+          charts.swap.data.labels = labels;
+          charts.swap.update();
+        }
         if (!charts.disk) {
           charts.disk = makeLineChart(document.getElementById("chart-disk"), "Disco", [{
             label: "% usado",

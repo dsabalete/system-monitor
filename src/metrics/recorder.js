@@ -59,6 +59,8 @@ function buildSample(stats) {
 
   const mem_used_mb = Number(stats?.memory?.used) || 0;
   const mem_total_mb = Number(stats?.memory?.total) || 0;
+  const mem_swap_used_mb = Number(stats?.memory?.swapUsed) || 0;
+  const mem_swap_total_mb = Number(stats?.memory?.swapTotal) || 0;
 
   const disk_used_percent = Number(String(stats?.disk?.used || "0").replace("%", "")) || 0;
   const disk_size_bytes = parseBytes(stats?.disk?.size);
@@ -86,6 +88,8 @@ function buildSample(stats) {
     cpu_load15,
     mem_used_mb,
     mem_total_mb,
+    mem_swap_used_mb,
+    mem_swap_total_mb,
     disk_used_percent,
     disk_size_bytes,
     net_rx_bps,

@@ -395,11 +395,17 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
     const uptimeSeconds = os.uptime();
     let totalMem = os.totalmem();
     let usedMem = totalMem - os.freemem();
+    let swapTotal = 0;
+    let swapUsed = 0;
     try {
       const mem = await si.mem();
       if (mem && Number.isFinite(mem.total) && Number.isFinite(mem.used)) {
         totalMem = mem.total;
         usedMem = mem.used;
+      }
+      if (mem && Number.isFinite(mem.swaptotal) && Number.isFinite(mem.swapused)) {
+        swapTotal = mem.swaptotal;
+        swapUsed = mem.swapused;
       }
     } catch (_e) { }
 
@@ -443,6 +449,8 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
       memory: {
         total: (totalMem / 1024 / 1024).toFixed(0),
         used: (usedMem / 1024 / 1024).toFixed(0),
+        swapTotal: (swapTotal / 1024 / 1024).toFixed(0),
+        swapUsed: (swapUsed / 1024 / 1024).toFixed(0),
       },
       disk,
       temperature: {
