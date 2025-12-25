@@ -18,6 +18,7 @@ const {
   MEMORY_CRIT_PERCENT,
   DISK_WARN_PERCENT,
   DISK_CRIT_PERCENT,
+  DEBUG_STATS,
 } = require("../config");
 
 const execAsync = promisify(exec);
@@ -45,13 +46,60 @@ function getTransmissionEndpoint() {
   return { url, isHttps, mod, port, path, key };
 }
 
-async function runCommand(command, { timeoutMs = COMMAND_TIMEOUT_MS } = {}) {
+function logDebug(event, data) {
+  if (!DEBUG_STATS) return;
   try {
-    const { stdout } = await execAsync(command, { timeout: timeoutMs, windowsHide: true });
-    return String(stdout || "").trim();
-  } catch (_error) {
+    const payload = { t: new Date().toISOString(), event, ...data };
+    console.error("[stats]", JSON.stringify(payload));
+  } catch (_e) { }
+}
+
+async function runCommand(command, { timeoutMs = COMMAND_TIMEOUT_MS, envAppend = {}, cwd, debugEvent } = {}) {
+  try {
+    const env = { ...process.env, ...envAppend };
+    const basePath = String(env.PATH || "");
+    const extraPath = ["/usr/bin", "/opt/vc/bin"].filter((p) => !basePath.includes(p)).join(":");
+    env.PATH = extraPath ? (basePath ? basePath + ":" + extraPath : extraPath) : basePath;
+    const { stdout, stderr } = await execAsync(command, { timeout: timeoutMs, windowsHide: true, env, cwd });
+    const out = String(stdout || "").trim();
+    if (debugEvent) {
+      logDebug(debugEvent, { command, cwd: cwd || process.cwd(), path: env.PATH, stdout: out, stderr: String(stderr || "").trim() });
+    }
+    return out;
+  } catch (error) {
+    if (debugEvent) {
+      logDebug(debugEvent, { command, cwd: cwd || process.cwd(), path: (process.env.PATH || ""), error: String(error && error.message || error) });
+    }
     return null;
   }
+}
+
+let vcgencmdDiagnosed = false;
+
+async function diagnoseVcgencmd() {
+  if (vcgencmdDiagnosed) return;
+  vcgencmdDiagnosed = true;
+  try {
+    const user = process.env.USER || null;
+    const uid = typeof process.getuid === "function" ? process.getuid() : null;
+    const gid = typeof process.getgid === "function" ? process.getgid() : null;
+    const path = process.env.PATH || "";
+    const cwd = process.cwd();
+    const groups = await runCommand("id -nG", { timeoutMs: 1500, debugEvent: "id_groups" });
+    let usrVcgencmd = null;
+    let optVcgencmd = null;
+    try { await fs.access("/usr/bin/vcgencmd"); usrVcgencmd = "/usr/bin/vcgencmd"; } catch (_e) { }
+    try { await fs.access("/opt/vc/bin/vcgencmd"); optVcgencmd = "/opt/vc/bin/vcgencmd"; } catch (_e) { }
+    let vchiq = null;
+    try {
+      const st = await fs.stat("/dev/vchiq");
+      vchiq = { mode: st.mode, gid: st.gid, uid: st.uid };
+    } catch (_e) { }
+    const which = await runCommand("which vcgencmd", { timeoutMs: 1500, debugEvent: "which_vcgencmd" });
+    const ver1 = await runCommand("/usr/bin/vcgencmd version", { timeoutMs: 1500, debugEvent: "vcgencmd_version_usr" });
+    const ver2 = await runCommand("/opt/vc/bin/vcgencmd version", { timeoutMs: 1500, debugEvent: "vcgencmd_version_opt" });
+    logDebug("vcgencmd_diagnostics", { user, uid, gid, path, cwd, groups, usrVcgencmd, optVcgencmd, vchiq, which, verUsr: ver1, verOpt: ver2 });
+  } catch (_e) { }
 }
 
 async function getNetworkStats() {
@@ -253,13 +301,42 @@ async function getGpuTemp() {
   } catch (_error) {
     // ignore and try vcgencmd below
   }
-  const stdout = await runCommand("vcgencmd measure_temp");
-  if (!stdout) return "0.0°C";
-  return stdout.replace("temp=", "").replace("'C", "°C");
+  let stdout = await runCommand("/usr/bin/vcgencmd measure_temp", { debugEvent: "vcgencmd_measure_temp_usr" });
+  if (!stdout) stdout = await runCommand("/opt/vc/bin/vcgencmd measure_temp", { debugEvent: "vcgencmd_measure_temp_opt" });
+  if (!stdout) stdout = await runCommand("vcgencmd measure_temp", { debugEvent: "vcgencmd_measure_temp_path" });
+  if (stdout) return stdout.replace("temp=", "").replace("'C", "°C");
+  await diagnoseVcgencmd();
+  try {
+    const zonesDir = "/sys/class/thermal";
+    const entries = await fs.readdir(zonesDir).catch(() => []);
+    const temps = [];
+    for (const name of entries) {
+      if (!String(name || "").startsWith("thermal_zone")) continue;
+      const base = `${zonesDir}/${name}`;
+      const type = await fs.readFile(`${base}/type`, "utf8").catch(() => null);
+      const raw = await fs.readFile(`${base}/temp`, "utf8").catch(() => null);
+      if (!raw) continue;
+      const millidegrees = Number.parseInt(String(raw).trim(), 10);
+      if (!Number.isFinite(millidegrees)) continue;
+      temps.push({ type: String(type || "").toLowerCase(), celsius: millidegrees / 1000 });
+    }
+    temps.sort((a, b) => b.celsius - a.celsius);
+    let selected = null;
+    selected = temps.find((t) => t.type.includes("gpu") || t.type.includes("v3d") || t.type.includes("graphic")) || null;
+    if (!selected) selected = temps.find((t) => t.type.includes("soc") || t.type.includes("cpu")) || null;
+    if (!selected && temps.length > 0) selected = temps[0];
+    if (selected) {
+      logDebug("thermal_zone_selected", { type: selected.type, temp: selected.celsius });
+      return `${Number(selected.celsius).toFixed(1)}°C`;
+    }
+  } catch (_e) { }
+  return "0.0°C";
 }
 
 async function getThrottlingHex() {
-  const stdout = await runCommand("vcgencmd get_throttled");
+  let stdout = await runCommand("/usr/bin/vcgencmd get_throttled", { debugEvent: "vcgencmd_get_throttled_usr" });
+  if (!stdout) stdout = await runCommand("/opt/vc/bin/vcgencmd get_throttled", { debugEvent: "vcgencmd_get_throttled_opt" });
+  if (!stdout) stdout = await runCommand("vcgencmd get_throttled", { debugEvent: "vcgencmd_get_throttled_path" });
   if (!stdout) return "0x0";
   return stdout.trim().replace("throttled=", "");
 }

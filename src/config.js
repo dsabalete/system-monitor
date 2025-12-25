@@ -21,6 +21,7 @@ const MEMORY_CRIT_PERCENT = numberFromEnv("MEMORY_CRIT_PERCENT", 90);
 const DISK_WARN_PERCENT = numberFromEnv("DISK_WARN_PERCENT", 80);
 const DISK_CRIT_PERCENT = numberFromEnv("DISK_CRIT_PERCENT", 90);
 const METRICS_INTERVAL_MS = numberFromEnv("METRICS_INTERVAL_MS", 10000);
+const DEBUG_STATS = String(process.env.DEBUG_STATS || "").toLowerCase() === "true" || String(process.env.DEBUG_STATS || "") === "1";
 
 module.exports = {
   COMMAND_TIMEOUT_MS,
@@ -37,4 +38,5 @@ module.exports = {
   DISK_WARN_PERCENT,
   DISK_CRIT_PERCENT,
   METRICS_INTERVAL_MS,
+  DEBUG_STATS,
 };
