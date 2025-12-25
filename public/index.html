@@ -275,6 +275,13 @@
   </div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
+    function numOrZero(val) {
+      const n = Number(val);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function fmtMB(val) {
+      return `${numOrZero(val)} MB`;
+    }
     async function loadStats() {
       try {
         const res = await fetch("/api/stats");
@@ -290,19 +297,23 @@
 
         // RAM
         document.getElementById("ram").textContent =
-          `${data.memory.used} / ${data.memory.total} MB`;
+          `${numOrZero(data.memory.used)} / ${numOrZero(data.memory.total)} MB`;
         const swapDiv = document.getElementById("swap");
         if (swapDiv) {
-          swapDiv.textContent = `${data.memory.swapUsed} / ${data.memory.swapTotal} MB`;
+          swapDiv.textContent = `${numOrZero(data.memory.swapUsed)} / ${numOrZero(data.memory.swapTotal)} MB`;
         }
         const memRow = document.getElementById("mem-table-row");
         if (memRow) {
-          const total = `${data.memory.total} MB`;
-          const used = `${data.memory.used} MB`;
-          const free = `${data.memory.free} MB`;
-          const shared = `${data.memory.shared} MB`;
-          const buffcache = `${data.memory.buffCache} MB`;
-          const available = `${data.memory.available} MB`;
+          const mem = data.memory || {};
+          const total = fmtMB(mem.total);
+          const used = fmtMB(mem.used);
+          const free = fmtMB(mem.free);
+          const shared = fmtMB(mem.shared);
+          const buffCacheVal = Number.isFinite(Number(mem.buffCache))
+            ? Number(mem.buffCache)
+            : (numOrZero(mem.buffers) + numOrZero(mem.cached));
+          const buffcache = `${buffCacheVal} MB`;
+          const available = fmtMB(mem.available);
           memRow.innerHTML = `
             <div>Mem:</div>
             <div>${total}</div>
@@ -316,7 +327,7 @@
         const memAlert = document.getElementById("mem-alert");
         if (memAlert && data.memory.alert) {
           const st = data.memory.alert.status;
-          const pct = data.memory.usedPercent;
+          const pct = numOrZero(data.memory.usedPercent);
           const cls = st === "crit" ? "alert-crit" : (st === "warn" ? "alert-warn" : "alert-ok");
           memAlert.className = `metric-value ${cls}`;
           memAlert.textContent = `Memoria usada: ${pct}% (${st})`;

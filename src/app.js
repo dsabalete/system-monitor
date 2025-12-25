@@ -78,7 +78,10 @@ function createApp() {
       sql += ` ORDER BY ts_ms ASC`;
       const csv = await execSql(sql);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.send(csv || "ts_ms,mem_total_mb,mem_used_mb,mem_free_mb,mem_shared_mb,mem_buffers_mb,mem_cached_mb,mem_buffcache_mb,mem_available_mb,mem_swap_total_mb,mem_swap_used_mb,mem_used_pct");
+      res.setHeader("Content-Disposition", 'attachment; filename="memory.csv"');
+      const header = "ts_ms,mem_total_mb,mem_used_mb,mem_free_mb,mem_shared_mb,mem_buffers_mb,mem_cached_mb,mem_buffcache_mb,mem_available_mb,mem_swap_total_mb,mem_swap_used_mb,mem_used_pct";
+      const out = "\uFEFF" + "sep=,\n" + (csv && csv.trim() ? csv : header) + "\n";
+      res.send(out);
     } catch (error) {
       console.error(error);
       const details = NODE_ENV === "production" ? undefined : error?.message;
@@ -103,7 +106,10 @@ function createApp() {
       sql += ` ORDER BY ts_ms ASC`;
       const csv = await execSql(sql);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.send(csv || "ts_ms,device_fs,mount,device_type,total_bytes,used_bytes,use_percent");
+      res.setHeader("Content-Disposition", 'attachment; filename="storage.csv"');
+      const header = "ts_ms,device_fs,mount,device_type,total_bytes,used_bytes,use_percent";
+      const out = "\uFEFF" + "sep=,\n" + (csv && csv.trim() ? csv : header) + "\n";
+      res.send(out);
     } catch (error) {
       console.error(error);
       const details = NODE_ENV === "production" ? undefined : error?.message;
