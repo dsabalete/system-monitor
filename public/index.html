@@ -6,115 +6,7 @@
   <title>System Monitor</title>
   <link rel="icon"
     href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2212%22%20fill%3D%22%23111%22/%3E%3Cpath%20d%3D%22M14%2040%20L24%2030%20L32%2038%20L44%2022%20L50%2028%22%20stroke%3D%22%234CAF50%22%20stroke-width%3D%226%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%2240%22%20r%3D%223%22%20fill%3D%22%234CAF50%22/%3E%3C/svg%3E" />
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: #eee;
-      padding: 20px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    h1 {
-      text-align: center;
-      color: #4CAF50;
-    }
-
-    .card {
-      background: #222;
-      font-size: 1.2em;
-      padding: 15px;
-      margin-bottom: 10px;
-      border-radius: 8px;
-      border-left: 4px solid #4CAF50;
-    }
-
-    .card h3 {
-      margin: 0 0 10px 0;
-      color: #4CAF50;
-      font-size: 1.1em;
-    }
-
-    .card-content {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-    }
-
-    .metric {
-      flex: 1;
-      min-width: 200px;
-    }
-
-    .metric-label {
-      color: #aaa;
-      font-size: 0.9em;
-    }
-
-    .metric-value {
-      color: #fff;
-      font-size: 1.1em;
-      font-weight: bold;
-    }
-
-    .network-interface {
-      background: #1a1a1a;
-      padding: 10px;
-      margin: 5px 0;
-      border-radius: 4px;
-    }
-
-    .ip-list {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    .ip-item {
-      background: #1a1a1a;
-      padding: 8px;
-      border-radius: 4px;
-      font-family: monospace;
-    }
-
-    .mem-table {
-      font-family: monospace;
-      background: #1a1a1a;
-      padding: 10px;
-      border-radius: 4px;
-    }
-
-    .mem-table-row {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 8px;
-    }
-
-    .alert-ok {
-      color: #4CAF50;
-    }
-
-    .alert-warn {
-      color: #ff9800;
-    }
-
-    .alert-crit {
-      color: #f44336;
-    }
-
-    .throttling-normal {
-      color: #4CAF50;
-    }
-
-    .throttling-warning {
-      color: #ff9800;
-    }
-
-    .throttling-error {
-      color: #f44336;
-    }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
@@ -159,7 +51,7 @@
       <div class="mem-table-row" id="swap-table-row"></div>
       <div class="metric-label" id="mem-alert"></div>
       <div class="metric-label">
-        <a href="/api/export/memory.csv?rangeSeconds=86400" style="color:#03A9F4;">Export CSV (24h)</a>
+        <a href="/api/export/memory.csv?rangeSeconds=86400" class="link-export">Export CSV (24h)</a>
       </div>
     </div>
   </div>
@@ -240,395 +132,38 @@
   <div class="card">
     <h3>📈 Históricos</h3>
     <div class="card-content">
-      <div class="metric" style="min-width: 300px;">
+      <div class="metric metric-wide">
         <div class="metric-label">CPU Load (1m)</div>
         <canvas id="chart-cpu"></canvas>
       </div>
-      <div class="metric" style="min-width: 300px;">
+      <div class="metric metric-wide">
         <div class="metric-label">% RAM usada</div>
         <canvas id="chart-ram"></canvas>
       </div>
-      <div class="metric" style="min-width: 300px;">
+      <div class="metric metric-wide">
         <div class="metric-label">% Swap usada</div>
         <canvas id="chart-swap"></canvas>
       </div>
-      <div class="metric" style="min-width: 300px;">
+      <div class="metric metric-wide">
         <div class="metric-label">% HDD usado</div>
         <canvas id="chart-hdd"></canvas>
       </div>
-      <div class="metric" style="min-width: 300px;">
+      <div class="metric metric-wide">
         <div class="metric-label">% SD usado</div>
         <canvas id="chart-sd"></canvas>
       </div>
-      <div class="metric" style="min-width: 300px;">
+      <div class="metric metric-wide">
         <div class="metric-label">Red ↓/↑ (bps)</div>
         <canvas id="chart-net"></canvas>
       </div>
-      <div class="metric" style="min-width: 300px;">
+      <div class="metric metric-wide">
         <div class="metric-label">Transmission ↓/↑ (bps)</div>
         <canvas id="chart-tx"></canvas>
       </div>
     </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script>
-    function numOrZero(val) {
-      const n = Number(val);
-      return Number.isFinite(n) ? n : 0;
-    }
-    function fmtMB(val) {
-      return `${numOrZero(val)} MB`;
-    }
-    async function loadStats() {
-      try {
-        const res = await fetch("/api/stats");
-        const data = await res.json();
-
-        // Uptime
-        document.getElementById("uptime").textContent = data.uptime.formatted;
-
-        // CPU Load Average
-        document.getElementById("load1min").textContent = data.cpu.load1min;
-        document.getElementById("load5min").textContent = data.cpu.load5min;
-        document.getElementById("load15min").textContent = data.cpu.load15min;
-
-        const memRow = document.getElementById("mem-table-row");
-        if (memRow) {
-          const mem = data.memory || {};
-          const total = fmtMB(mem.total);
-          const used = fmtMB(mem.used);
-          const free = fmtMB(mem.free);
-          const shared = fmtMB(mem.shared);
-          const buffCacheVal = Number.isFinite(Number(mem.buffCache))
-            ? Number(mem.buffCache)
-            : (numOrZero(mem.buffers) + numOrZero(mem.cached));
-          const buffcache = `${buffCacheVal} MB`;
-          const available = fmtMB(mem.available);
-          memRow.innerHTML = `
-            <div>Mem:</div>
-            <div>${total}</div>
-            <div>${used}</div>
-            <div>${free}</div>
-            <div>${shared}</div>
-            <div>${buffcache}</div>
-            <div>${available}</div>
-          `;
-        }
-        const swapRow = document.getElementById("swap-table-row");
-        if (swapRow) {
-          const mem = data.memory || {};
-          const swapTotal = fmtMB(mem.swapTotal);
-          const swapUsed = fmtMB(mem.swapUsed);
-          const swapFree = fmtMB(numOrZero(mem.swapTotal) - numOrZero(mem.swapUsed));
-          swapRow.innerHTML = `
-            <div>Swap:</div>
-            <div>${swapTotal}</div>
-            <div>${swapUsed}</div>
-            <div>${swapFree}</div>
-            <div></div>
-            <div></div>
-            <div></div>
-          `;
-        }
-        const memAlert = document.getElementById("mem-alert");
-        if (memAlert && data.memory.alert) {
-          const st = data.memory.alert.status;
-          const pct = numOrZero(data.memory.usedPercent);
-          const cls = st === "crit" ? "alert-crit" : (st === "warn" ? "alert-warn" : "alert-ok");
-          memAlert.className = `metric-value ${cls}`;
-          memAlert.textContent = `Memoria usada: ${pct}% (${st})`;
-        }
-
-        // Temperature
-        document.getElementById("temp-cpu").textContent = data.temperature.cpu;
-        document.getElementById("temp-gpu").textContent = data.temperature.gpu;
-
-        // Storage devices
-        function renderStorage(list, containerId) {
-          const el = document.getElementById(containerId);
-          if (!el) return;
-          if (!Array.isArray(list) || list.length === 0) {
-            el.innerHTML = '<div class="metric-value">No detectado</div>';
-            return;
-          }
-          const html = list.map(d => {
-            const st = d.alert?.status || "ok";
-            const cls = st === "crit" ? "alert-crit" : (st === "warn" ? "alert-warn" : "alert-ok");
-            return `
-              <div class="network-interface">
-                <strong>${d.mount || d.fs}</strong><br>
-                <span class="metric-label">Dispositivo:</span> ${d.fs}<br>
-                <span class="metric-label">Uso:</span> <span class="${cls}">${d.usePercent}%</span><br>
-                <span class="metric-label">Tamaño:</span> ${d.total}<br>
-                <span class="metric-label">Usado:</span> ${d.used}
-              </div>
-            `;
-          }).join("");
-          el.innerHTML = html;
-        }
-        renderStorage(data.storage?.hdd || [], "storage-hdd");
-        renderStorage(data.storage?.sd || [], "storage-sd");
-
-        // Network Usage
-        const networkDiv = document.getElementById("network");
-        const bandwidth = data.network.bandwidth || {};
-        const totals = data.network.totals || {};
-        if (Object.keys(bandwidth).length === 0) {
-          networkDiv.innerHTML = '<div class="metric-value">Collecting data...</div>';
-        } else {
-          let networkHTML = "";
-          if (totals.aggregate) {
-            networkHTML += `
-              <div class="network-interface">
-                <strong>Total (todas las interfaces):</strong><br>
-                <span class="metric-label">↓ Total:</span> ${totals.aggregate.rxTotal}<br>
-                <span class="metric-label">↑ Total:</span> ${totals.aggregate.txTotal}
-              </div>
-            `;
-          }
-          for (const [interface, stats] of Object.entries(bandwidth)) {
-            const ifaceTotals = totals.perInterface ? totals.perInterface[interface] : null;
-            networkHTML += `
-              <div class="network-interface">
-                <strong>${interface}:</strong><br>
-                <span class="metric-label">↓ Download:</span> ${stats.rx}<br>
-                <span class="metric-label">↑ Upload:</span> ${stats.tx}<br>
-                ${ifaceTotals ? `
-                  <span class="metric-label">↓ Total:</span> ${ifaceTotals.rxTotal}<br>
-                  <span class="metric-label">↑ Total:</span> ${ifaceTotals.txTotal}
-                ` : ``}
-              </div>
-            `;
-          }
-          networkDiv.innerHTML = networkHTML || '<div class="metric-value">No active interfaces</div>';
-        }
-
-        // IP Addresses
-        document.getElementById("public-ip").textContent = data.ipAddresses.public;
-
-        const ipv4Div = document.getElementById("local-ipv4");
-        if (data.ipAddresses.local.ipv4.length === 0) {
-          ipv4Div.innerHTML = '<div class="ip-item">None</div>';
-        } else {
-          ipv4Div.innerHTML = data.ipAddresses.local.ipv4
-            .map(ip => `<div class="ip-item">${ip.interface}: ${ip.address}</div>`)
-            .join("");
-        }
-
-        const ipv6Div = document.getElementById("local-ipv6");
-        if (data.ipAddresses.local.ipv6.length === 0) {
-          ipv6Div.innerHTML = '<div class="ip-item">None</div>';
-        } else {
-          ipv6Div.innerHTML = data.ipAddresses.local.ipv6
-            .map(ip => `<div class="ip-item">${ip.interface}: ${ip.address}</div>`)
-            .join("");
-        }
-
-        // Throttling Status
-        const throttlingDiv = document.getElementById("throttling");
-        const throttlingStatus = data.throttling.status;
-        let throttlingClass = "throttling-normal";
-        if (throttlingStatus !== "Normal") {
-          throttlingClass = throttlingStatus.includes("Throttled") || throttlingStatus.includes("Undervoltage")
-            ? "throttling-error"
-            : "throttling-warning";
-        }
-        throttlingDiv.className = `metric-value ${throttlingClass}`;
-        throttlingDiv.textContent = throttlingStatus;
-
-        // Transmission
-        const tx = data.transmission || {};
-        const txStatusDiv = document.getElementById("transmission-status");
-        const txDlDiv = document.getElementById("transmission-download");
-        const txUlDiv = document.getElementById("transmission-upload");
-        const txActiveCountDiv = document.getElementById("transmission-active-count");
-        const txTorrentsDiv = document.getElementById("transmission-torrents");
-        if (!tx.enabled) {
-          txStatusDiv.textContent = tx.reason ? `Deshabilitado (${tx.reason})` : "Deshabilitado";
-          txDlDiv.textContent = "-";
-          txUlDiv.textContent = "-";
-          txActiveCountDiv.textContent = "0";
-          txTorrentsDiv.innerHTML = tx.reason
-            ? `<div class="metric-value">${tx.reason}</div>`
-            : '<div class="metric-value">No hay datos</div>';
-        } else if (tx.error) {
-          txStatusDiv.textContent = tx.error;
-          txDlDiv.textContent = "-";
-          txUlDiv.textContent = "-";
-          txActiveCountDiv.textContent = "0";
-          txTorrentsDiv.innerHTML = '<div class="metric-value">Error obteniendo torrents</div>';
-        } else {
-          txStatusDiv.textContent = "OK";
-          txDlDiv.textContent = tx.session?.download || "-";
-          txUlDiv.textContent = tx.session?.upload || "-";
-          txActiveCountDiv.textContent = String(tx.session?.activeTorrents ?? 0);
-          const list = Array.isArray(tx.torrents) ? tx.torrents : [];
-          if (list.length === 0) {
-            txTorrentsDiv.innerHTML = '<div class="metric-value">Sin torrents activos</div>';
-          } else {
-            txTorrentsDiv.innerHTML = list
-              .map(t => `
-                <div class="network-interface">
-                  <strong>${t.name}</strong><br>
-                  <span class="metric-label">Estado:</span> ${t.status}<br>
-                  <span class="metric-label">↓:</span> ${t.download} &nbsp; 
-                  <span class="metric-label">↑:</span> ${t.upload} &nbsp; 
-                  <span class="metric-label">Progreso:</span> ${t.progress}
-                </div>
-              `)
-              .join("");
-          }
-        }
-      } catch (error) {
-        console.error("Error loading stats:", error);
-      }
-    }
-
-    loadStats();
-    setInterval(loadStats, 5000);
-    let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hdd: null, sd: null };
-    function makeLineChart(ctx, label, datasets) {
-      return new Chart(ctx, {
-        type: "line",
-        data: { labels: [], datasets },
-        options: {
-          responsive: true,
-          animation: false,
-          scales: {
-            x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
-            y: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
-          },
-          plugins: {
-            legend: { labels: { color: "#eee" } },
-          },
-        },
-      });
-    }
-    async function loadHistory() {
-      try {
-        const res = await fetch("/api/history?rangeSeconds=3600");
-        const { samples } = await res.json();
-        const labels = samples.map(s => new Date(s.ts_ms).toLocaleTimeString());
-        const cpu1 = samples.map(s => s.cpu_load1);
-        const ramPct = samples.map(s => s.mem_total_mb > 0 ? Math.round((s.mem_used_mb / s.mem_total_mb) * 100) : 0);
-        const netRx = samples.map(s => s.net_rx_bps);
-        const netTx = samples.map(s => s.net_tx_bps);
-        const txDl = samples.map(s => s.tx_download_bps);
-        const txUl = samples.map(s => s.tx_upload_bps);
-        const swapPct = samples.map(s => (s.mem_swap_total_mb > 0 ? Math.round((s.mem_swap_used_mb / s.mem_swap_total_mb) * 100) : 0));
-        if (!charts.cpu) {
-          charts.cpu = makeLineChart(document.getElementById("chart-cpu"), "CPU", [{
-            label: "Load 1m",
-            data: cpu1,
-            borderColor: "#4CAF50",
-            tension: 0.2,
-          }]);
-        } else {
-          charts.cpu.data.datasets[0].data = cpu1;
-        }
-        charts.cpu.data.labels = labels;
-        charts.cpu.update();
-        if (!charts.ram) {
-          charts.ram = makeLineChart(document.getElementById("chart-ram"), "RAM", [{
-            label: "% usada",
-            data: ramPct,
-            borderColor: "#03A9F4",
-            tension: 0.2,
-          }]);
-        } else {
-          charts.ram.data.datasets[0].data = ramPct;
-        }
-        charts.ram.data.labels = labels;
-        charts.ram.update();
-        if (!charts.swap) {
-          const el = document.getElementById("chart-swap");
-          if (el) {
-            charts.swap = makeLineChart(el, "Swap", [{
-              label: "% usada",
-              data: swapPct,
-              borderColor: "#9E9E9E",
-              tension: 0.2,
-            }]);
-          }
-        } else {
-          charts.swap.data.datasets[0].data = swapPct;
-        }
-        if (charts.swap) {
-          charts.swap.data.labels = labels;
-          charts.swap.update();
-        }
-        if (!charts.net) {
-          charts.net = makeLineChart(document.getElementById("chart-net"), "Red", [
-            { label: "↓ bps", data: netRx, borderColor: "#8BC34A", tension: 0.2 },
-            { label: "↑ bps", data: netTx, borderColor: "#E91E63", tension: 0.2 },
-          ]);
-        } else {
-          charts.net.data.datasets[0].data = netRx;
-          charts.net.data.datasets[1].data = netTx;
-        }
-        charts.net.data.labels = labels;
-        charts.net.update();
-        if (!charts.tx) {
-          charts.tx = makeLineChart(document.getElementById("chart-tx"), "Transmission", [
-            { label: "↓ bps", data: txDl, borderColor: "#00BCD4", tension: 0.2 },
-            { label: "↑ bps", data: txUl, borderColor: "#9C27B0", tension: 0.2 },
-          ]);
-        } else {
-          charts.tx.data.datasets[0].data = txDl;
-          charts.tx.data.datasets[1].data = txUl;
-        }
-        charts.tx.data.labels = labels;
-        charts.tx.update();
-
-        const resHdd = await fetch("/api/storage/history?deviceType=HDD&rangeSeconds=3600");
-        const resSd = await fetch("/api/storage/history?deviceType=SD&rangeSeconds=3600");
-        const hddData = await resHdd.json();
-        const sdData = await resSd.json();
-        function groupByFs(rows) {
-          const groups = {};
-          for (const r of rows || []) {
-            const key = r.device_fs;
-            if (!groups[key]) groups[key] = [];
-            groups[key].push({ ts_ms: r.ts_ms, pct: r.use_percent, mount: r.mount });
-          }
-          return groups;
-        }
-        const hddGroups = groupByFs(hddData.samples || []);
-        const sdGroups = groupByFs(sdData.samples || []);
-        const baseSamples = (Array.isArray(hddData.samples) && hddData.samples.length ? hddData.samples : (sdData.samples || []));
-        const labelsStorage = baseSamples.map(s => new Date(s.ts_ms).toLocaleTimeString());
-        function makeDatasets(groups, color) {
-          const colors = ["#FFC107", "#FF5722", "#8BC34A", "#03A9F4", "#9C27B0", "#E91E63"];
-          let i = 0;
-          return Object.entries(groups).map(([fs, arr]) => {
-            const data = arr.map(a => a.pct);
-            const label = arr[0]?.mount || fs;
-            const c = colors[i++ % colors.length];
-            return { label, data, borderColor: c, tension: 0.2 };
-          });
-        }
-        const hddDatasets = makeDatasets(hddGroups);
-        const sdDatasets = makeDatasets(sdGroups);
-        if (!charts.hdd) {
-          charts.hdd = makeLineChart(document.getElementById("chart-hdd"), "HDD", hddDatasets);
-        } else {
-          charts.hdd.data.datasets = hddDatasets;
-        }
-        charts.hdd.data.labels = labelsStorage;
-        charts.hdd.update();
-        if (!charts.sd) {
-          charts.sd = makeLineChart(document.getElementById("chart-sd"), "SD", sdDatasets);
-        } else {
-          charts.sd.data.datasets = sdDatasets;
-        }
-        charts.sd.data.labels = labelsStorage;
-        charts.sd.update();
-      } catch (e) {
-      }
-    }
-    loadHistory();
-    setInterval(loadHistory, 10000);
-  </script>
+  <script src="app.js"></script>
 </body>
 
 </html>

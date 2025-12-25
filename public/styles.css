@@ -1,0 +1,115 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #111;
+  color: #eee;
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+h1 {
+  text-align: center;
+  color: #4CAF50;
+}
+
+.card {
+  background: #222;
+  font-size: 1.2em;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border-left: 4px solid #4CAF50;
+}
+
+.card h3 {
+  margin: 0 0 10px 0;
+  color: #4CAF50;
+  font-size: 1.1em;
+}
+
+.card-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.metric {
+  flex: 1;
+  min-width: 200px;
+}
+
+.metric-label {
+  color: #aaa;
+  font-size: 0.9em;
+}
+
+.metric-value {
+  color: #fff;
+  font-size: 1.1em;
+  font-weight: bold;
+}
+
+.network-interface {
+  background: #1a1a1a;
+  padding: 10px;
+  margin: 5px 0;
+  border-radius: 4px;
+}
+
+.ip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ip-item {
+  background: #1a1a1a;
+  padding: 8px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.mem-table {
+  font-family: monospace;
+  background: #1a1a1a;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.mem-table-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.alert-ok {
+  color: #4CAF50;
+}
+
+.alert-warn {
+  color: #ff9800;
+}
+
+.alert-crit {
+  color: #f44336;
+}
+
+.throttling-normal {
+  color: #4CAF50;
+}
+
+.throttling-warning {
+  color: #ff9800;
+}
+
+.throttling-error {
+  color: #f44336;
+}
+
+.metric-wide {
+  min-width: 300px;
+}
+
+.link-export {
+  color: #03A9F4;
+}
