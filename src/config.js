@@ -22,6 +22,7 @@ const DISK_WARN_PERCENT = numberFromEnv("DISK_WARN_PERCENT", 80);
 const DISK_CRIT_PERCENT = numberFromEnv("DISK_CRIT_PERCENT", 90);
 const METRICS_INTERVAL_MS = numberFromEnv("METRICS_INTERVAL_MS", 10000);
 const DEBUG_STATS = String(process.env.DEBUG_STATS || "").toLowerCase() === "true" || String(process.env.DEBUG_STATS || "") === "1";
+const DISABLE_SQLITE = String(process.env.DISABLE_SQLITE || "").toLowerCase() === "true" || String(process.env.DISABLE_SQLITE || "") === "1";
 
 module.exports = {
   COMMAND_TIMEOUT_MS,
@@ -39,4 +40,5 @@ module.exports = {
   DISK_CRIT_PERCENT,
   METRICS_INTERVAL_MS,
   DEBUG_STATS,
+  DISABLE_SQLITE,
 };

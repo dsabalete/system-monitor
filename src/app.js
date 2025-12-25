@@ -1,17 +1,36 @@
 const express = require("express");
-const { NODE_ENV, PUBLIC_DIR, METRICS_INTERVAL_MS } = require("./config");
+const { NODE_ENV, PUBLIC_DIR, METRICS_INTERVAL_MS, DISABLE_SQLITE } = require("./config");
 const { createStatsCollector } = require("./stats");
 const { initDatabase, getHistory, execSql } = require("./db/sqlite");
 const { createMetricsRecorder } = require("./metrics/recorder");
+const { createPrometheusMetrics } = require("./metrics/prometheus");
 
 function createApp() {
   const app = express();
   const statsCollector = createStatsCollector();
-  initDatabase();
-  const recorder = createMetricsRecorder(statsCollector, { intervalMs: METRICS_INTERVAL_MS });
-  recorder.start();
+  const prom = createPrometheusMetrics(statsCollector, { intervalMs: METRICS_INTERVAL_MS });
+  if (!DISABLE_SQLITE) {
+    initDatabase();
+    const recorder = createMetricsRecorder(statsCollector, { intervalMs: METRICS_INTERVAL_MS, onSample: prom.updateFromSample });
+    recorder.start();
+  }
+  if (DISABLE_SQLITE) {
+    prom.start();
+  }
 
   app.use(express.static(PUBLIC_DIR));
+
+  app.get("/metrics", async (req, res) => {
+    try {
+      res.setHeader("Content-Type", prom.register.contentType || "text/plain");
+      const out = await prom.register.metrics();
+      res.send(out);
+    } catch (error) {
+      console.error(error);
+      const details = NODE_ENV === "production" ? undefined : error?.message;
+      res.status(500).json({ error: "Error generando métricas Prometheus", details });
+    }
+  });
 
   app.get("/api/stats", async (req, res) => {
     try {
@@ -26,6 +45,10 @@ function createApp() {
 
   app.get("/api/history", async (req, res) => {
     try {
+      if (DISABLE_SQLITE) {
+        res.status(503).json({ error: "Histórico no disponible (SQLite desactivado)" });
+        return;
+      }
       const limit = Number(req.query.limit) || 360;
       const rangeSeconds = Number(req.query.rangeSeconds) || null;
       const fromMs = Number.isFinite(rangeSeconds) && rangeSeconds > 0 ? Date.now() - rangeSeconds * 1000 : null;
@@ -49,6 +72,10 @@ function createApp() {
   });
   app.get("/api/storage/history", async (req, res) => {
     try {
+      if (DISABLE_SQLITE) {
+        res.status(503).json({ error: "Histórico de storage no disponible (SQLite desactivado)" });
+        return;
+      }
       const { getStorageHistory, execSql } = require("./db/sqlite");
       const deviceType = req.query.deviceType || null;
       const deviceFs = req.query.deviceFs || null;
@@ -64,6 +91,10 @@ function createApp() {
   });
   app.get("/api/export/memory.csv", async (req, res) => {
     try {
+      if (DISABLE_SQLITE) {
+        res.status(503).json({ error: "Export no disponible (SQLite desactivado)" });
+        return;
+      }
       const rangeSeconds = Number(req.query.rangeSeconds) || null;
       const fromMs = Number.isFinite(rangeSeconds) && rangeSeconds > 0 ? Date.now() - rangeSeconds * 1000 : null;
       let sql = `
@@ -90,6 +121,10 @@ function createApp() {
   });
   app.get("/api/export/storage.csv", async (req, res) => {
     try {
+      if (DISABLE_SQLITE) {
+        res.status(503).json({ error: "Export no disponible (SQLite desactivado)" });
+        return;
+      }
       const deviceType = req.query.deviceType || null;
       const deviceFs = req.query.deviceFs || null;
       const rangeSeconds = Number(req.query.rangeSeconds) || null;

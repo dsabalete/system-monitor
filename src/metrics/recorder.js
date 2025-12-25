@@ -114,7 +114,7 @@ function buildSample(stats) {
   };
 }
 
-function createMetricsRecorder(statsCollector, { intervalMs = 10_000 } = {}) {
+function createMetricsRecorder(statsCollector, { intervalMs = 10_000, onSample } = {}) {
   let timer = null;
   async function tick() {
     try {
@@ -147,6 +147,9 @@ function createMetricsRecorder(statsCollector, { intervalMs = 10_000 } = {}) {
         });
       }
       if (rows.length) await insertStorageMetrics(rows);
+      if (typeof onSample === "function") {
+        try { onSample(sample, stats); } catch (_e) {}
+      }
       const crit = []
         .concat((stats?.storage?.hdd || []).filter(d => d.alert?.status === "crit"))
         .concat((stats?.storage?.sd || []).filter(d => d.alert?.status === "crit"));
