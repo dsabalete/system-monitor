@@ -247,13 +247,15 @@ async function getGpuTemp() {
     const graphics = await si.graphics();
     const controller = (graphics.controllers || []).find((c) => Number.isFinite(c.temperatureGpu));
     const temp = controller ? controller.temperatureGpu : null;
-    if (!Number.isFinite(temp)) return "0.0°C";
-    return `${Number(temp).toFixed(1)}°C`;
+    if (Number.isFinite(temp)) {
+      return `${Number(temp).toFixed(1)}°C`;
+    }
   } catch (_error) {
-    const stdout = await runCommand("vcgencmd measure_temp");
-    if (!stdout) return "0.0°C";
-    return stdout.replace("temp=", "").replace("'C", "°C");
+    // ignore and try vcgencmd below
   }
+  const stdout = await runCommand("vcgencmd measure_temp");
+  if (!stdout) return "0.0°C";
+  return stdout.replace("temp=", "").replace("'C", "°C");
 }
 
 async function getThrottlingHex() {
