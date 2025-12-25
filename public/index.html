@@ -76,6 +76,20 @@
       border-radius: 4px;
       font-family: monospace;
     }
+    .mem-table {
+      font-family: monospace;
+      background: #1a1a1a;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .mem-table-row {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+    .alert-ok { color: #4CAF50; }
+    .alert-warn { color: #ff9800; }
+    .alert-crit { color: #f44336; }
 
     .throttling-normal {
       color: #4CAF50;
@@ -125,6 +139,25 @@
     <h3>🔄 Swap</h3>
     <div class="metric-value" id="swap"></div>
   </div>
+  <div class="card">
+    <h3>📑 Memoria detallada (free -h)</h3>
+    <div class="mem-table">
+      <div class="mem-table-row">
+        <strong></strong>
+        <strong>Total</strong>
+        <strong>Usada</strong>
+        <strong>Libre</strong>
+        <strong>Shared</strong>
+        <strong>Buff/Cache</strong>
+        <strong>Available</strong>
+      </div>
+      <div class="mem-table-row" id="mem-table-row"></div>
+      <div class="metric-label" id="mem-alert"></div>
+      <div class="metric-label">
+        <a href="/api/export/memory.csv?rangeSeconds=86400" style="color:#03A9F4;">Export CSV (24h)</a>
+      </div>
+    </div>
+  </div>
 
   <div class="card">
     <h3>🌡️ Temperature</h3>
@@ -143,6 +176,14 @@
   <div class="card">
     <h3>💾 Disk</h3>
     <div class="metric-value" id="disk"></div>
+  </div>
+  <div class="card">
+    <h3>🗄️ HDD</h3>
+    <div id="storage-hdd"></div>
+  </div>
+  <div class="card">
+    <h3>📀 SD</h3>
+    <div id="storage-sd"></div>
   </div>
 
   <div class="card">
@@ -215,6 +256,14 @@
         <canvas id="chart-disk"></canvas>
       </div>
       <div class="metric" style="min-width: 300px;">
+        <div class="metric-label">% HDD usado</div>
+        <canvas id="chart-hdd"></canvas>
+      </div>
+      <div class="metric" style="min-width: 300px;">
+        <div class="metric-label">% SD usado</div>
+        <canvas id="chart-sd"></canvas>
+      </div>
+      <div class="metric" style="min-width: 300px;">
         <div class="metric-label">Red ↓/↑ (bps)</div>
         <canvas id="chart-net"></canvas>
       </div>
@@ -246,6 +295,32 @@
         if (swapDiv) {
           swapDiv.textContent = `${data.memory.swapUsed} / ${data.memory.swapTotal} MB`;
         }
+        const memRow = document.getElementById("mem-table-row");
+        if (memRow) {
+          const total = `${data.memory.total} MB`;
+          const used = `${data.memory.used} MB`;
+          const free = `${data.memory.free} MB`;
+          const shared = `${data.memory.shared} MB`;
+          const buffcache = `${data.memory.buffCache} MB`;
+          const available = `${data.memory.available} MB`;
+          memRow.innerHTML = `
+            <div>Mem:</div>
+            <div>${total}</div>
+            <div>${used}</div>
+            <div>${free}</div>
+            <div>${shared}</div>
+            <div>${buffcache}</div>
+            <div>${available}</div>
+          `;
+        }
+        const memAlert = document.getElementById("mem-alert");
+        if (memAlert && data.memory.alert) {
+          const st = data.memory.alert.status;
+          const pct = data.memory.usedPercent;
+          const cls = st === "crit" ? "alert-crit" : (st === "warn" ? "alert-warn" : "alert-ok");
+          memAlert.className = `metric-value ${cls}`;
+          memAlert.textContent = `Memoria usada: ${pct}% (${st})`;
+        }
 
         // Temperature
         document.getElementById("temp-cpu").textContent = data.temperature.cpu;
@@ -254,6 +329,32 @@
         // Disk
         document.getElementById("disk").textContent =
           `${data.disk.used} / ${data.disk.size}`;
+
+        // Storage devices
+        function renderStorage(list, containerId) {
+          const el = document.getElementById(containerId);
+          if (!el) return;
+          if (!Array.isArray(list) || list.length === 0) {
+            el.innerHTML = '<div class="metric-value">No detectado</div>';
+            return;
+          }
+          const html = list.map(d => {
+            const st = d.alert?.status || "ok";
+            const cls = st === "crit" ? "alert-crit" : (st === "warn" ? "alert-warn" : "alert-ok");
+            return `
+              <div class="network-interface">
+                <strong>${d.mount || d.fs}</strong><br>
+                <span class="metric-label">Dispositivo:</span> ${d.fs}<br>
+                <span class="metric-label">Uso:</span> <span class="${cls}">${d.usePercent}%</span><br>
+                <span class="metric-label">Tamaño:</span> ${d.total}<br>
+                <span class="metric-label">Usado:</span> ${d.used}
+              </div>
+            `;
+          }).join("");
+          el.innerHTML = html;
+        }
+        renderStorage(data.storage?.hdd || [], "storage-hdd");
+        renderStorage(data.storage?.sd || [], "storage-sd");
 
         // Network Usage
         const networkDiv = document.getElementById("network");
@@ -372,7 +473,7 @@
 
     loadStats();
     setInterval(loadStats, 5000);
-    let charts = { cpu: null, ram: null, swap: null, disk: null, net: null, tx: null };
+    let charts = { cpu: null, ram: null, swap: null, disk: null, net: null, tx: null, hdd: null, sd: null };
     function makeLineChart(ctx, label, datasets) {
       return new Chart(ctx, {
         type: "line",
@@ -478,6 +579,50 @@
         }
         charts.tx.data.labels = labels;
         charts.tx.update();
+
+        const resHdd = await fetch("/api/storage/history?deviceType=HDD&rangeSeconds=3600");
+        const resSd = await fetch("/api/storage/history?deviceType=SD&rangeSeconds=3600");
+        const hddData = await resHdd.json();
+        const sdData = await resSd.json();
+        function groupByFs(rows) {
+          const groups = {};
+          for (const r of rows || []) {
+            const key = r.device_fs;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push({ ts_ms: r.ts_ms, pct: r.use_percent, mount: r.mount });
+          }
+          return groups;
+        }
+        const hddGroups = groupByFs(hddData.samples || []);
+        const sdGroups = groupByFs(sdData.samples || []);
+        const baseSamples = (Array.isArray(hddData.samples) && hddData.samples.length ? hddData.samples : (sdData.samples || []));
+        const labelsStorage = baseSamples.map(s => new Date(s.ts_ms).toLocaleTimeString());
+        function makeDatasets(groups, color) {
+          const colors = ["#FFC107", "#FF5722", "#8BC34A", "#03A9F4", "#9C27B0", "#E91E63"];
+          let i = 0;
+          return Object.entries(groups).map(([fs, arr]) => {
+            const data = arr.map(a => a.pct);
+            const label = arr[0]?.mount || fs;
+            const c = colors[i++ % colors.length];
+            return { label, data, borderColor: c, tension: 0.2 };
+          });
+        }
+        const hddDatasets = makeDatasets(hddGroups);
+        const sdDatasets = makeDatasets(sdGroups);
+        if (!charts.hdd) {
+          charts.hdd = makeLineChart(document.getElementById("chart-hdd"), "HDD", hddDatasets);
+        } else {
+          charts.hdd.data.datasets = hddDatasets;
+        }
+        charts.hdd.data.labels = labelsStorage;
+        charts.hdd.update();
+        if (!charts.sd) {
+          charts.sd = makeLineChart(document.getElementById("chart-sd"), "SD", sdDatasets);
+        } else {
+          charts.sd.data.datasets = sdDatasets;
+        }
+        charts.sd.data.labels = labelsStorage;
+        charts.sd.update();
       } catch (e) {
       }
     }

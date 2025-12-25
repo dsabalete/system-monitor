@@ -1,4 +1,4 @@
-const { insertMetric } = require("../db/sqlite");
+const { insertMetric, insertStorageMetrics } = require("../db/sqlite");
 
 function parseBandwidthBps(text) {
   if (!text || typeof text !== "string") return 0;
@@ -61,6 +61,13 @@ function buildSample(stats) {
   const mem_total_mb = Number(stats?.memory?.total) || 0;
   const mem_swap_used_mb = Number(stats?.memory?.swapUsed) || 0;
   const mem_swap_total_mb = Number(stats?.memory?.swapTotal) || 0;
+  const mem_free_mb = Number(stats?.memory?.free) || 0;
+  const mem_available_mb = Number(stats?.memory?.available) || 0;
+  const mem_shared_mb = Number(stats?.memory?.shared) || 0;
+  const mem_buffers_mb = Number(stats?.memory?.buffers) || 0;
+  const mem_cached_mb = Number(stats?.memory?.cached) || 0;
+  const mem_buffcache_mb = Number(stats?.memory?.buffCache) || 0;
+  const mem_used_pct = Number(stats?.memory?.usedPercent) || 0;
 
   const disk_used_percent = Number(String(stats?.disk?.used || "0").replace("%", "")) || 0;
   const disk_size_bytes = parseBytes(stats?.disk?.size);
@@ -90,6 +97,13 @@ function buildSample(stats) {
     mem_total_mb,
     mem_swap_used_mb,
     mem_swap_total_mb,
+    mem_free_mb,
+    mem_available_mb,
+    mem_shared_mb,
+    mem_buffers_mb,
+    mem_cached_mb,
+    mem_buffcache_mb,
+    mem_used_pct,
     disk_used_percent,
     disk_size_bytes,
     net_rx_bps,
@@ -107,6 +121,38 @@ function createMetricsRecorder(statsCollector, { intervalMs = 10_000 } = {}) {
       const stats = await statsCollector.getStats();
       const sample = buildSample(stats);
       await insertMetric(sample);
+      const rows = [];
+      const ts = Date.now();
+      const storage = stats?.storage || {};
+      for (const item of (storage.hdd || [])) {
+        rows.push({
+          ts_ms: ts,
+          device_fs: item.fs,
+          mount: item.mount,
+          device_type: "HDD",
+          total_bytes: item.totalBytes,
+          used_bytes: item.usedBytes,
+          use_percent: item.usePercent,
+        });
+      }
+      for (const item of (storage.sd || [])) {
+        rows.push({
+          ts_ms: ts,
+          device_fs: item.fs,
+          mount: item.mount,
+          device_type: "SD",
+          total_bytes: item.totalBytes,
+          used_bytes: item.usedBytes,
+          use_percent: item.usePercent,
+        });
+      }
+      if (rows.length) await insertStorageMetrics(rows);
+      const crit = []
+        .concat((stats?.storage?.hdd || []).filter(d => d.alert?.status === "crit"))
+        .concat((stats?.storage?.sd || []).filter(d => d.alert?.status === "crit"));
+      for (const c of crit) {
+        try { console.warn(`[ALERTA] Uso crítico en ${c.type} ${c.mount || c.fs}: ${c.usePercent}%`); } catch (e) {}
+      }
     } catch (e) {
     }
   }

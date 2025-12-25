@@ -14,6 +14,10 @@ const {
   TRANSMISSION_USERNAME,
   TRANSMISSION_PASSWORD,
   TRANSMISSION_TIMEOUT_MS,
+  MEMORY_WARN_PERCENT,
+  MEMORY_CRIT_PERCENT,
+  DISK_WARN_PERCENT,
+  DISK_CRIT_PERCENT,
 } = require("../config");
 
 const execAsync = promisify(exec);
@@ -191,6 +195,50 @@ async function getDiskUsage() {
     return { used: `${usedPercent.toFixed(0)}%`, size: formatBytes(sizeBytes) };
   } catch (_error) {
     return { used: "N/A", size: "N/A" };
+  }
+}
+
+function classifyStorageDevice(fsPath) {
+  const name = String(fsPath || "").toLowerCase();
+  if (!name) return null;
+  if (name.includes("mmcblk")) return "SD";
+  if (name.includes("/dev/sd") || name.includes("nvme")) return "HDD";
+  return null;
+}
+
+async function getStorageDevices() {
+  try {
+    const list = await si.fsSize();
+    const out = { hdd: [], sd: [] };
+    for (const d of list || []) {
+      const type = classifyStorageDevice(d.fs);
+      if (!type) continue;
+      const total = Number(d.size) || 0;
+      const used = Number(d.used) || 0;
+      const pct = Number.isFinite(d.use) && d.use > 0 ? Number(d.use) : (total > 0 ? (used / total) * 100 : 0);
+      let alert = { status: "ok", threshold: DISK_WARN_PERCENT, usedPercent: Number(pct.toFixed(1)) };
+      if (pct >= DISK_CRIT_PERCENT) {
+        alert = { status: "crit", threshold: DISK_CRIT_PERCENT, usedPercent: Number(pct.toFixed(1)) };
+      } else if (pct >= DISK_WARN_PERCENT) {
+        alert = { status: "warn", threshold: DISK_WARN_PERCENT, usedPercent: Number(pct.toFixed(1)) };
+      }
+      const item = {
+        fs: d.fs,
+        mount: d.mount,
+        type,
+        totalBytes: total,
+        usedBytes: used,
+        usePercent: Number(pct.toFixed(1)),
+        total: formatBytes(total),
+        used: formatBytes(used),
+        alert,
+      };
+      if (type === "HDD") out.hdd.push(item);
+      if (type === "SD") out.sd.push(item);
+    }
+    return out;
+  } catch (_e) {
+    return { hdd: [], sd: [] };
   }
 }
 
@@ -397,6 +445,11 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
     let usedMem = totalMem - os.freemem();
     let swapTotal = 0;
     let swapUsed = 0;
+    let freeMem = os.freemem();
+    let availableMem = 0;
+    let sharedMem = 0;
+    let buffersMem = 0;
+    let cachedMem = 0;
     try {
       const mem = await si.mem();
       if (mem && Number.isFinite(mem.total) && Number.isFinite(mem.used)) {
@@ -406,6 +459,21 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
       if (mem && Number.isFinite(mem.swaptotal) && Number.isFinite(mem.swapused)) {
         swapTotal = mem.swaptotal;
         swapUsed = mem.swapused;
+      }
+      if (mem && Number.isFinite(mem.free)) {
+        freeMem = mem.free;
+      }
+      if (mem && Number.isFinite(mem.available)) {
+        availableMem = mem.available;
+      }
+      if (mem && Number.isFinite(mem.shared)) {
+        sharedMem = mem.shared;
+      }
+      if (mem && Number.isFinite(mem.buffers)) {
+        buffersMem = mem.buffers;
+      }
+      if (mem && Number.isFinite(mem.cached)) {
+        cachedMem = mem.cached;
       }
     } catch (_e) { }
 
@@ -435,7 +503,19 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
       withTimeout(getPublicIP(), PUBLIC_IP_TIMEOUT_MS),
       getTransmissionStats(),
     ]);
+    const storage = await getStorageDevices();
 
+    const usedPercent = totalMem > 0 ? ((usedMem / totalMem) * 100) : 0;
+    const usedPercentFixed = usedPercent.toFixed(1);
+    let memAlert = { status: "ok", threshold: 80, usedPercent: Number(usedPercentFixed) };
+    try {
+      const { MEMORY_WARN_PERCENT, MEMORY_CRIT_PERCENT } = require("../config");
+      if (usedPercent >= MEMORY_CRIT_PERCENT) {
+        memAlert = { status: "crit", threshold: MEMORY_CRIT_PERCENT, usedPercent: Number(usedPercentFixed) };
+      } else if (usedPercent >= MEMORY_WARN_PERCENT) {
+        memAlert = { status: "warn", threshold: MEMORY_WARN_PERCENT, usedPercent: Number(usedPercentFixed) };
+      }
+    } catch (_e) { }
     return {
       cpu: {
         load1min: loadAvg[0].toFixed(2),
@@ -449,10 +529,19 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
       memory: {
         total: (totalMem / 1024 / 1024).toFixed(0),
         used: (usedMem / 1024 / 1024).toFixed(0),
+        free: (freeMem / 1024 / 1024).toFixed(0),
+        shared: (sharedMem / 1024 / 1024).toFixed(0),
+        buffers: (buffersMem / 1024 / 1024).toFixed(0),
+        cached: (cachedMem / 1024 / 1024).toFixed(0),
+        buffCache: (((buffersMem + cachedMem) / 1024 / 1024)).toFixed(0),
+        available: (availableMem / 1024 / 1024).toFixed(0),
         swapTotal: (swapTotal / 1024 / 1024).toFixed(0),
         swapUsed: (swapUsed / 1024 / 1024).toFixed(0),
+        usedPercent: usedPercentFixed,
+        alert: memAlert,
       },
       disk,
+      storage,
       temperature: {
         cpu: cpuTemp,
         gpu: gpuTemp,

@@ -7,6 +7,8 @@
     "start": "node index.js",
     "test": "node test/format.test.js",
     "stats": "node scripts/print-stats.js",
+    "collect:hdd": "node scripts/collect-hdd.js",
+    "collect:sd": "node scripts/collect-sd.js",
     "update-and-restart": "git fetch && git pull && npm install && npm run restart",
     "restart": "sudo systemctl restart system-monitor"
   },

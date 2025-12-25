@@ -1,14 +1,14 @@
 const express = require("express");
-const { NODE_ENV, PUBLIC_DIR } = require("./config");
+const { NODE_ENV, PUBLIC_DIR, METRICS_INTERVAL_MS } = require("./config");
 const { createStatsCollector } = require("./stats");
-const { initDatabase, getHistory } = require("./db/sqlite");
+const { initDatabase, getHistory, execSql } = require("./db/sqlite");
 const { createMetricsRecorder } = require("./metrics/recorder");
 
 function createApp() {
   const app = express();
   const statsCollector = createStatsCollector();
   initDatabase();
-  const recorder = createMetricsRecorder(statsCollector, { intervalMs: 10_000 });
+  const recorder = createMetricsRecorder(statsCollector, { intervalMs: METRICS_INTERVAL_MS });
   recorder.start();
 
   app.use(express.static(PUBLIC_DIR));
@@ -35,6 +35,79 @@ function createApp() {
       console.error(error);
       const details = NODE_ENV === "production" ? undefined : error?.message;
       res.status(500).json({ error: "Error leyendo histórico", details });
+    }
+  });
+  app.get("/api/storage", async (req, res) => {
+    try {
+      const stats = await statsCollector.getStats();
+      res.json({ storage: stats.storage });
+    } catch (error) {
+      console.error(error);
+      const details = NODE_ENV === "production" ? undefined : error?.message;
+      res.status(500).json({ error: "Error leyendo storage", details });
+    }
+  });
+  app.get("/api/storage/history", async (req, res) => {
+    try {
+      const { getStorageHistory, execSql } = require("./db/sqlite");
+      const deviceType = req.query.deviceType || null;
+      const deviceFs = req.query.deviceFs || null;
+      const limit = Number(req.query.limit) || 360;
+      const rangeSeconds = Number(req.query.rangeSeconds) || null;
+      const rows = await getStorageHistory({ deviceType, deviceFs, rangeSeconds, limit });
+      res.json({ samples: rows });
+    } catch (error) {
+      console.error(error);
+      const details = NODE_ENV === "production" ? undefined : error?.message;
+      res.status(500).json({ error: "Error leyendo histórico de storage", details });
+    }
+  });
+  app.get("/api/export/memory.csv", async (req, res) => {
+    try {
+      const rangeSeconds = Number(req.query.rangeSeconds) || null;
+      const fromMs = Number.isFinite(rangeSeconds) && rangeSeconds > 0 ? Date.now() - rangeSeconds * 1000 : null;
+      let sql = `
+        SELECT ts_ms, mem_total_mb, mem_used_mb, mem_free_mb, mem_shared_mb,
+               mem_buffers_mb, mem_cached_mb, mem_buffcache_mb, mem_available_mb,
+               mem_swap_total_mb, mem_swap_used_mb, mem_used_pct
+        FROM metrics
+      `;
+      if (Number.isFinite(fromMs) && fromMs > 0) {
+        sql += ` WHERE ts_ms >= ${fromMs}`;
+      }
+      sql += ` ORDER BY ts_ms ASC`;
+      const csv = await execSql(sql);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.send(csv || "ts_ms,mem_total_mb,mem_used_mb,mem_free_mb,mem_shared_mb,mem_buffers_mb,mem_cached_mb,mem_buffcache_mb,mem_available_mb,mem_swap_total_mb,mem_swap_used_mb,mem_used_pct");
+    } catch (error) {
+      console.error(error);
+      const details = NODE_ENV === "production" ? undefined : error?.message;
+      res.status(500).json({ error: "Error exportando memoria", details });
+    }
+  });
+  app.get("/api/export/storage.csv", async (req, res) => {
+    try {
+      const deviceType = req.query.deviceType || null;
+      const deviceFs = req.query.deviceFs || null;
+      const rangeSeconds = Number(req.query.rangeSeconds) || null;
+      const fromMs = Number.isFinite(rangeSeconds) && rangeSeconds > 0 ? Date.now() - rangeSeconds * 1000 : null;
+      let sql = `
+        SELECT ts_ms, device_fs, mount, device_type, total_bytes, used_bytes, use_percent
+        FROM storage_metrics
+      `;
+      const where = [];
+      if (deviceType) where.push(`device_type = '${String(deviceType).replace(/'/g, "''")}'`);
+      if (deviceFs) where.push(`device_fs = '${String(deviceFs).replace(/'/g, "''")}'`);
+      if (Number.isFinite(fromMs) && fromMs > 0) where.push(`ts_ms >= ${fromMs}`);
+      if (where.length) sql += ` WHERE ${where.join(" AND ")}`;
+      sql += ` ORDER BY ts_ms ASC`;
+      const csv = await execSql(sql);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.send(csv || "ts_ms,device_fs,mount,device_type,total_bytes,used_bytes,use_percent");
+    } catch (error) {
+      console.error(error);
+      const details = NODE_ENV === "production" ? undefined : error?.message;
+      res.status(500).json({ error: "Error exportando storage", details });
     }
   });
 
