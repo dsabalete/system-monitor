@@ -2,9 +2,11 @@ function numOrZero(val) {
   const n = Number(val);
   return Number.isFinite(n) ? n : 0;
 }
+
 function fmtMB(val) {
   return `${numOrZero(val)} MB`;
 }
+
 async function loadStats() {
   try {
     const res = await fetch("/api/stats");
@@ -203,8 +205,11 @@ async function loadStats() {
 }
 
 loadStats();
+
 setInterval(loadStats, 5000);
+
 let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hdd: null, sd: null };
+
 function makeLineChart(ctx, label, datasets) {
   return new Chart(ctx, {
     type: "line",
@@ -222,6 +227,7 @@ function makeLineChart(ctx, label, datasets) {
     },
   });
 }
+
 async function loadHistory() {
   try {
     const res = await fetch("/api/history?rangeSeconds=3600");
@@ -344,5 +350,7 @@ async function loadHistory() {
   } catch (e) {
   }
 }
+
 loadHistory();
+
 setInterval(loadHistory, 10000);
