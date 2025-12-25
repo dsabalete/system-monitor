@@ -4,7 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <title>System Monitor</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2212%22%20fill%3D%22%23111%22/%3E%3Cpath%20d%3D%22M14%2040%20L24%2030%20L32%2038%20L44%2022%20L50%2028%22%20stroke%3D%22%234CAF50%22%20stroke-width%3D%226%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%2240%22%20r%3D%223%22%20fill%3D%22%234CAF50%22/%3E%3C/svg%3E" />
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2212%22%20fill%3D%22%23111%22/%3E%3Cpath%20d%3D%22M14%2040%20L24%2030%20L32%2038%20L44%2022%20L50%2028%22%20stroke%3D%22%234CAF50%22%20stroke-width%3D%226%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3Ccircle%20cx%3D%2214%22%20cy%3D%2240%22%20r%3D%223%22%20fill%3D%22%234CAF50%22/%3E%3C/svg%3E" />
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -76,20 +77,31 @@
       border-radius: 4px;
       font-family: monospace;
     }
+
     .mem-table {
       font-family: monospace;
       background: #1a1a1a;
       padding: 10px;
       border-radius: 4px;
     }
+
     .mem-table-row {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       gap: 8px;
     }
-    .alert-ok { color: #4CAF50; }
-    .alert-warn { color: #ff9800; }
-    .alert-crit { color: #f44336; }
+
+    .alert-ok {
+      color: #4CAF50;
+    }
+
+    .alert-warn {
+      color: #ff9800;
+    }
+
+    .alert-crit {
+      color: #f44336;
+    }
 
     .throttling-normal {
       color: #4CAF50;
@@ -132,15 +144,7 @@
   </div>
 
   <div class="card">
-    <h3>🧮 RAM</h3>
-    <div class="metric-value" id="ram"></div>
-  </div>
-  <div class="card">
-    <h3>🔄 Swap</h3>
-    <div class="metric-value" id="swap"></div>
-  </div>
-  <div class="card">
-    <h3>📑 Memoria detallada (free -h)</h3>
+    <h3>📑 Memoria</h3>
     <div class="mem-table">
       <div class="mem-table-row">
         <strong></strong>
@@ -152,6 +156,7 @@
         <strong>Available</strong>
       </div>
       <div class="mem-table-row" id="mem-table-row"></div>
+      <div class="mem-table-row" id="swap-table-row"></div>
       <div class="metric-label" id="mem-alert"></div>
       <div class="metric-label">
         <a href="/api/export/memory.csv?rangeSeconds=86400" style="color:#03A9F4;">Export CSV (24h)</a>
@@ -174,11 +179,7 @@
   </div>
 
   <div class="card">
-    <h3>💾 Disk</h3>
-    <div class="metric-value" id="disk"></div>
-  </div>
-  <div class="card">
-    <h3>🗄️ HDD</h3>
+    <h3>️ HDD</h3>
     <div id="storage-hdd"></div>
   </div>
   <div class="card">
@@ -252,10 +253,6 @@
         <canvas id="chart-swap"></canvas>
       </div>
       <div class="metric" style="min-width: 300px;">
-        <div class="metric-label">% Disco usado</div>
-        <canvas id="chart-disk"></canvas>
-      </div>
-      <div class="metric" style="min-width: 300px;">
         <div class="metric-label">% HDD usado</div>
         <canvas id="chart-hdd"></canvas>
       </div>
@@ -295,13 +292,6 @@
         document.getElementById("load5min").textContent = data.cpu.load5min;
         document.getElementById("load15min").textContent = data.cpu.load15min;
 
-        // RAM
-        document.getElementById("ram").textContent =
-          `${numOrZero(data.memory.used)} / ${numOrZero(data.memory.total)} MB`;
-        const swapDiv = document.getElementById("swap");
-        if (swapDiv) {
-          swapDiv.textContent = `${numOrZero(data.memory.swapUsed)} / ${numOrZero(data.memory.swapTotal)} MB`;
-        }
         const memRow = document.getElementById("mem-table-row");
         if (memRow) {
           const mem = data.memory || {};
@@ -324,6 +314,22 @@
             <div>${available}</div>
           `;
         }
+        const swapRow = document.getElementById("swap-table-row");
+        if (swapRow) {
+          const mem = data.memory || {};
+          const swapTotal = fmtMB(mem.swapTotal);
+          const swapUsed = fmtMB(mem.swapUsed);
+          const swapFree = fmtMB(numOrZero(mem.swapTotal) - numOrZero(mem.swapUsed));
+          swapRow.innerHTML = `
+            <div>Swap:</div>
+            <div>${swapTotal}</div>
+            <div>${swapUsed}</div>
+            <div>${swapFree}</div>
+            <div></div>
+            <div></div>
+            <div></div>
+          `;
+        }
         const memAlert = document.getElementById("mem-alert");
         if (memAlert && data.memory.alert) {
           const st = data.memory.alert.status;
@@ -336,10 +342,6 @@
         // Temperature
         document.getElementById("temp-cpu").textContent = data.temperature.cpu;
         document.getElementById("temp-gpu").textContent = data.temperature.gpu;
-
-        // Disk
-        document.getElementById("disk").textContent =
-          `${data.disk.used} / ${data.disk.size}`;
 
         // Storage devices
         function renderStorage(list, containerId) {
@@ -484,7 +486,7 @@
 
     loadStats();
     setInterval(loadStats, 5000);
-    let charts = { cpu: null, ram: null, swap: null, disk: null, net: null, tx: null, hdd: null, sd: null };
+    let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hdd: null, sd: null };
     function makeLineChart(ctx, label, datasets) {
       return new Chart(ctx, {
         type: "line",
@@ -509,7 +511,6 @@
         const labels = samples.map(s => new Date(s.ts_ms).toLocaleTimeString());
         const cpu1 = samples.map(s => s.cpu_load1);
         const ramPct = samples.map(s => s.mem_total_mb > 0 ? Math.round((s.mem_used_mb / s.mem_total_mb) * 100) : 0);
-        const diskPct = samples.map(s => s.disk_used_percent);
         const netRx = samples.map(s => s.net_rx_bps);
         const netTx = samples.map(s => s.net_tx_bps);
         const txDl = samples.map(s => s.tx_download_bps);
@@ -556,18 +557,6 @@
           charts.swap.data.labels = labels;
           charts.swap.update();
         }
-        if (!charts.disk) {
-          charts.disk = makeLineChart(document.getElementById("chart-disk"), "Disco", [{
-            label: "% usado",
-            data: diskPct,
-            borderColor: "#FFC107",
-            tension: 0.2,
-          }]);
-        } else {
-          charts.disk.data.datasets[0].data = diskPct;
-        }
-        charts.disk.data.labels = labels;
-        charts.disk.update();
         if (!charts.net) {
           charts.net = makeLineChart(document.getElementById("chart-net"), "Red", [
             { label: "↓ bps", data: netRx, borderColor: "#8BC34A", tension: 0.2 },

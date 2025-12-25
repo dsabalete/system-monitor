@@ -507,15 +507,14 @@ function createStatsCollector({ now = () => Date.now() } = {}) {
 
     const usedPercent = totalMem > 0 ? ((usedMem / totalMem) * 100) : 0;
     const usedPercentFixed = usedPercent.toFixed(1);
-    let memAlert = { status: "ok", threshold: 80, usedPercent: Number(usedPercentFixed) };
-    try {
-      const { MEMORY_WARN_PERCENT, MEMORY_CRIT_PERCENT } = require("../config");
-      if (usedPercent >= MEMORY_CRIT_PERCENT) {
-        memAlert = { status: "crit", threshold: MEMORY_CRIT_PERCENT, usedPercent: Number(usedPercentFixed) };
-      } else if (usedPercent >= MEMORY_WARN_PERCENT) {
-        memAlert = { status: "warn", threshold: MEMORY_WARN_PERCENT, usedPercent: Number(usedPercentFixed) };
-      }
-    } catch (_e) { }
+    const memWarnPercent = Number.isFinite(Number(MEMORY_WARN_PERCENT)) ? Number(MEMORY_WARN_PERCENT) : 80;
+    const memCritPercent = Number.isFinite(Number(MEMORY_CRIT_PERCENT)) ? Number(MEMORY_CRIT_PERCENT) : 90;
+    let memAlert = { status: "ok", threshold: memWarnPercent, usedPercent: Number(usedPercentFixed) };
+    if (usedPercent >= memCritPercent) {
+      memAlert = { status: "crit", threshold: memCritPercent, usedPercent: Number(usedPercentFixed) };
+    } else if (usedPercent >= memWarnPercent) {
+      memAlert = { status: "warn", threshold: memWarnPercent, usedPercent: Number(usedPercentFixed) };
+    }
     return {
       cpu: {
         load1min: loadAvg[0].toFixed(2),
