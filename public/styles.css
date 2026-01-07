@@ -9,7 +9,7 @@ body {
 
 h1 {
   text-align: center;
-  color: #4CAF50;
+  color: #4caf50;
 }
 
 .card {
@@ -18,12 +18,12 @@ h1 {
   padding: 15px;
   margin-bottom: 10px;
   border-radius: 8px;
-  border-left: 4px solid #4CAF50;
+  border-left: 4px solid #4caf50;
 }
 
 .card h3 {
   margin: 0 0 10px 0;
-  color: #4CAF50;
+  color: #4caf50;
   font-size: 1.1em;
 }
 
@@ -83,7 +83,7 @@ h1 {
 }
 
 .alert-ok {
-  color: #4CAF50;
+  color: #4caf50;
 }
 
 .alert-warn {
@@ -95,7 +95,7 @@ h1 {
 }
 
 .throttling-normal {
-  color: #4CAF50;
+  color: #4caf50;
 }
 
 .throttling-warning {
@@ -111,5 +111,12 @@ h1 {
 }
 
 .link-export {
-  color: #03A9F4;
+  color: #03a9f4;
+}
+
+.chart-container-pie {
+  position: relative;
+  height: 150px;
+  width: 150px;
+  margin: 10px auto;
 }

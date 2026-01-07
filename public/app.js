@@ -91,6 +91,7 @@ async function loadStats() {
       el.innerHTML = html;
     }
     renderStorage(data.storage?.hdd || [], "storage-hdd");
+    updateHddPie(data.storage?.hdd || []);
     renderStorage(data.storage?.sd || [], "storage-sd");
 
     const networkDiv = document.getElementById("network");
@@ -204,11 +205,52 @@ async function loadStats() {
   }
 }
 
+function updateHddPie(hddList) {
+  if (!hddList || hddList.length === 0) return;
+  // Usamos el primer disco HDD para el gráfico circular
+  const hdd = hddList[0];
+  const used = numOrZero(hdd.usePercent);
+  const free = 100 - used;
+
+  const ctx = document.getElementById("chart-hdd-pie");
+  if (!ctx) return;
+
+  if (!charts.hddPie) {
+    charts.hddPie = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: ["Usado", "Libre"],
+        datasets: [{
+          data: [used, free],
+          backgroundColor: ["#FFC107", "#333"],
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        cutout: "70%",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => ` ${item.label}: ${item.raw}%`
+            }
+          }
+        }
+      }
+    });
+  } else {
+    charts.hddPie.data.datasets[0].data = [used, free];
+    charts.hddPie.update();
+  }
+}
+
 loadStats();
 
 setInterval(loadStats, 5000);
 
-let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hdd: null, sd: null };
+let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hdd: null, sd: null, hddPie: null };
 
 function makeLineChart(ctx, label, datasets) {
   return new Chart(ctx, {
@@ -332,14 +374,12 @@ async function loadHistory() {
       });
     }
     const hddDatasets = makeDatasets(hddGroups);
-    const sdDatasets = makeDatasets(sdGroups);
-    if (!charts.hdd) {
-      charts.hdd = makeLineChart(document.getElementById("chart-hdd"), "HDD", hddDatasets);
-    } else {
-      charts.hdd.data.datasets = hddDatasets;
+    /* Removed HDD historical chart */
+    if (charts.hdd) {
+      charts.hdd.destroy();
+      charts.hdd = null;
     }
-    charts.hdd.data.labels = labelsStorage;
-    charts.hdd.update();
+    const sdDatasets = makeDatasets(sdGroups);
     if (!charts.sd) {
       charts.sd = makeLineChart(document.getElementById("chart-sd"), "SD", sdDatasets);
     } else {

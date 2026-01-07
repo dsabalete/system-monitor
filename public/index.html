@@ -73,6 +73,9 @@
   <div class="card">
     <h3>️ HDD</h3>
     <div id="storage-hdd"></div>
+    <div class="chart-container-pie">
+      <canvas id="chart-hdd-pie"></canvas>
+    </div>
   </div>
   <div class="card">
     <h3>📀 SD</h3>
@@ -144,10 +147,7 @@
         <div class="metric-label">% Swap usada</div>
         <canvas id="chart-swap"></canvas>
       </div>
-      <div class="metric metric-wide">
-        <div class="metric-label">% HDD usado</div>
-        <canvas id="chart-hdd"></canvas>
-      </div>
+
       <div class="metric metric-wide">
         <div class="metric-label">% SD usado</div>
         <canvas id="chart-sd"></canvas>
