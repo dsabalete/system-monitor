@@ -319,7 +319,7 @@ loadStats();
 
 setInterval(loadStats, 5000);
 
-let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hdd: null, sd: null, hddPie: null, sdPie: null };
+let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hddPie: null, sdPie: null };
 
 function makeLineChart(ctx, label, datasets) {
   return new Chart(ctx, {
@@ -449,13 +449,10 @@ async function loadHistory() {
       charts.hdd = null;
     }
     const sdDatasets = makeDatasets(sdGroups);
-    if (!charts.sd) {
-      charts.sd = makeLineChart(document.getElementById("chart-sd"), "SD", sdDatasets);
-    } else {
-      charts.sd.data.datasets = sdDatasets;
+    if (charts.sd) {
+      charts.sd.destroy();
+      charts.sd = null;
     }
-    charts.sd.data.labels = labelsStorage;
-    charts.sd.update();
   } catch (e) {
   }
 }
