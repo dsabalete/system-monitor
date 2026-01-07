@@ -58,6 +58,30 @@
   </div>
 
   <div class="card">
+    <h3>️ HDD</h3>
+    <div class="card-content">
+      <div id="storage-hdd" class="metric"></div>
+      <div class="metric">
+        <div class="chart-container-pie" style="margin: 0 auto;">
+          <canvas id="chart-hdd-pie"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📀 SD</h3>
+    <div class="card-content">
+      <div id="storage-sd" class="metric"></div>
+      <div class="metric">
+        <div class="chart-container-pie" style="margin: 0 auto;">
+          <canvas id="chart-sd-pie"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
     <h3>🌡️ Temperature</h3>
     <div class="card-content">
       <div class="metric">
@@ -72,36 +96,18 @@
   </div>
 
   <div class="card">
-    <h3>️ HDD</h3>
-    <div class="card-content">
-      <div id="storage-hdd" class="metric"></div>
-      <div class="metric">
-        <div class="chart-container-pie" style="margin: 0 auto;">
-          <canvas id="chart-hdd-pie"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="card">
-    <h3>📀 SD</h3>
-    <div class="card-content">
-      <div id="storage-sd" class="metric"></div>
-      <div class="metric">
-        <div class="chart-container-pie" style="margin: 0 auto;">
-          <canvas id="chart-sd-pie"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
     <h3>🌐 Network Usage</h3>
     <div id="network"></div>
   </div>
 
   <div class="card">
+    <h3>⚡ Throttling Status</h3>
+    <div class="metric-value" id="throttling"></div>
+  </div>
+
+  <div class="card">
     <h3>📍 IP Addresses</h3>
-    <div class="card-content">
+    <div class="card-content ip-addresses">
       <div class="metric">
         <div class="metric-label">Public IP:</div>
         <div class="metric-value" id="public-ip"></div>
@@ -118,13 +124,8 @@
   </div>
 
   <div class="card">
-    <h3>⚡ Throttling Status</h3>
-    <div class="metric-value" id="throttling"></div>
-  </div>
-
-  <div class="card">
     <h3>🧲 Transmission</h3>
-    <div class="card-content">
+    <div class="card-content transmission-stats">
       <div class="metric">
         <div class="metric-label">Estado:</div>
         <div class="metric-value" id="transmission-status"></div>

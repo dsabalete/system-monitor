@@ -255,8 +255,11 @@ canvas {
   }
 
   /* Make certain cards span full width */
-  .card:has(#network),
+
+  .card:has(.ip-addresses),
   .card:has(.mem-table),
+  .card:has(.transmission-stats),
+  .card:has(#throttling),
   .card:has(#chart-cpu) {
     grid-column: 1 / -1;
   }
