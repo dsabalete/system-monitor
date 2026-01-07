@@ -7,6 +7,22 @@ function fmtMB(val) {
   return `${numOrZero(val)} MB`;
 }
 
+const centerTextPlugin = {
+  id: "centerText",
+  afterDraw: (chart) => {
+    const options = chart.config.options.plugins.centerText;
+    if (!options || !options.display) return;
+    const { ctx, chartArea: { top, right, bottom, left, width, height } } = chart;
+    ctx.save();
+    ctx.font = options.font || "bold 24px Arial";
+    ctx.fillStyle = options.color || "#eee";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(options.text || "", left + width / 2, top + height / 2);
+    ctx.restore();
+  }
+};
+
 async function loadStats() {
   try {
     const res = await fetch("/api/stats");
@@ -93,6 +109,7 @@ async function loadStats() {
     renderStorage(data.storage?.hdd || [], "storage-hdd");
     updateHddPie(data.storage?.hdd || []);
     renderStorage(data.storage?.sd || [], "storage-sd");
+    updateSdPie(data.storage?.sd || []);
 
     const networkDiv = document.getElementById("network");
     const bandwidth = data.network.bandwidth || {};
@@ -218,6 +235,7 @@ function updateHddPie(hddList) {
   if (!charts.hddPie) {
     charts.hddPie = new Chart(ctx, {
       type: "doughnut",
+      plugins: [centerTextPlugin],
       data: {
         labels: ["Usado", "Libre"],
         datasets: [{
@@ -236,13 +254,64 @@ function updateHddPie(hddList) {
             callbacks: {
               label: (item) => ` ${item.label}: ${item.raw}%`
             }
+          },
+          centerText: {
+            display: true,
+            text: `${used}%`
           }
         }
       }
     });
   } else {
     charts.hddPie.data.datasets[0].data = [used, free];
+    charts.hddPie.options.plugins.centerText.text = `${used}%`;
     charts.hddPie.update();
+  }
+}
+
+function updateSdPie(sdList) {
+  if (!sdList || sdList.length === 0) return;
+  const sd = sdList[0];
+  const used = numOrZero(sd.usePercent);
+  const free = 100 - used;
+
+  const ctx = document.getElementById("chart-sd-pie");
+  if (!ctx) return;
+
+  if (!charts.sdPie) {
+    charts.sdPie = new Chart(ctx, {
+      type: "doughnut",
+      plugins: [centerTextPlugin],
+      data: {
+        labels: ["Usado", "Libre"],
+        datasets: [{
+          data: [used, free],
+          backgroundColor: ["#03A9F4", "#333"],
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        cutout: "70%",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => ` ${item.label}: ${item.raw}%`
+            }
+          },
+          centerText: {
+            display: true,
+            text: `${used}%`
+          }
+        }
+      }
+    });
+  } else {
+    charts.sdPie.data.datasets[0].data = [used, free];
+    charts.sdPie.options.plugins.centerText.text = `${used}%`;
+    charts.sdPie.update();
   }
 }
 
@@ -250,7 +319,7 @@ loadStats();
 
 setInterval(loadStats, 5000);
 
-let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hdd: null, sd: null, hddPie: null };
+let charts = { cpu: null, ram: null, swap: null, net: null, tx: null, hdd: null, sd: null, hddPie: null, sdPie: null };
 
 function makeLineChart(ctx, label, datasets) {
   return new Chart(ctx, {
